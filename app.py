@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import urllib.parse
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- IMPORT ENGINES ---
 import zynd_leads
@@ -9,14 +11,8 @@ import zynd_daily_engine
 import zynd_twitter_engine
 
 # --- SETTINGS & THEME ---
-st.set_page_config(
-    page_title="Zynd | GTM Command Center",
-    page_icon="⚡",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Zynd | GTM Command Center", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for a professional "SaaS" look
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
@@ -31,7 +27,6 @@ SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 @st.cache_data(ttl=300)
 def load_full_database():
-    """Loads all tabs from Google Sheets for an aggregated view."""
     try:
         def get_url(name): return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(name)}"
         gh = pd.read_csv(get_url("GitHub Leads"))
@@ -40,6 +35,47 @@ def load_full_database():
         return gh, rd, tw
     except:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+# --- THE DEDUPLICATION ENGINE ---
+def clean_database():
+    """Finds and removes duplicate leads across all tabs in Google Sheets."""
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    client = gspread.authorize(creds)
+    
+    total_removed = 0
+    
+    # 1. Clean GitHub
+    try:
+        gh_sheet = client.open_by_key(SHEET_ID).worksheet("GitHub Leads")
+        gh_data = gh_sheet.get_all_records()
+        if gh_data:
+            df = pd.DataFrame(gh_data)
+            before = len(df)
+            df.drop_duplicates(subset=['Project URL'], keep='first', inplace=True) # Drop dupes based on URL
+            after = len(df)
+            if before > after:
+                gh_sheet.clear()
+                gh_sheet.update([df.columns.values.tolist()] + df.values.tolist())
+                total_removed += (before - after)
+    except: pass
+
+    # 2. Clean Reddit
+    try:
+        rd_sheet = client.open_by_key(SHEET_ID).worksheet("Reddit Leads")
+        rd_data = rd_sheet.get_all_records()
+        if rd_data:
+            df = pd.DataFrame(rd_data)
+            before = len(df)
+            df.drop_duplicates(subset=['Post URL'], keep='first', inplace=True)
+            after = len(df)
+            if before > after:
+                rd_sheet.clear()
+                rd_sheet.update([df.columns.values.tolist()] + df.values.tolist())
+                total_removed += (before - after)
+    except: pass
+
+    return total_removed
 
 # --- LOAD DATA ---
 df_gh, df_rd, df_tw = load_full_database()
@@ -59,7 +95,6 @@ with st.sidebar:
 if menu == "📈 Pipeline Overview":
     st.header("Executive GTM Summary")
     
-    # High-level Metrics
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Lead Pool", len(df_gh) + len(df_rd) + len(df_tw))
     m2.metric("Qualified Builders", len(df_gh[df_gh['Lead Score (1-10)'] >= 8]) if not df_gh.empty else 0)
@@ -67,21 +102,15 @@ if menu == "📈 Pipeline Overview":
     m4.metric("Contactable (Emails)", len(df_gh[df_gh['Email'].notna()]) if not df_gh.empty else 0)
 
     st.divider()
-    
     col_left, col_right = st.columns([2, 1])
     
     with col_left:
         st.subheader("Recent High-Intent Activity")
-        # Combine newest leads from all sources
-        st.write("Latest 50 leads across all platforms:")
         st.dataframe(df_rd.head(25), use_container_width=True)
 
     with col_right:
         st.subheader("Platform Distribution")
-        chart_data = pd.DataFrame({
-            'Source': ['GitHub', 'Reddit', 'Twitter'],
-            'Count': [len(df_gh), len(df_rd), len(df_tw)]
-        })
+        chart_data = pd.DataFrame({'Source': ['GitHub', 'Reddit', 'Twitter'], 'Count': [len(df_gh), len(df_rd), len(df_tw)]})
         st.bar_chart(chart_data.set_index('Source'))
 
 # ==========================================
@@ -89,12 +118,15 @@ if menu == "📈 Pipeline Overview":
 # ==========================================
 elif menu == "💻 GitHub Builders":
     st.header("Technical Lead Discovery")
-    q_col1, q_col2 = st.columns([3, 1])
     
+    q_col1, q_col2 = st.columns([3, 1])
     with q_col2:
         min_gh = st.slider("Min Lead Score", 1, 10, 7, key="gh_slider")
     
     filtered_gh = df_gh[df_gh['Lead Score (1-10)'] >= min_gh] if not df_gh.empty else df_gh
+    
+    # NEW: Tab Lead Count
+    st.metric("Total GitHub Leads (Filtered)", len(filtered_gh))
     st.dataframe(filtered_gh, use_container_width=True, height=600)
 
 # ==========================================
@@ -102,6 +134,9 @@ elif menu == "💻 GitHub Builders":
 # ==========================================
 elif menu == "💬 Reddit Intent":
     st.header("Social Intent & Pain Points")
+    
+    # NEW: Tab Lead Count
+    st.metric("Total Reddit Leads", len(df_rd))
     st.dataframe(df_rd, use_container_width=True, height=600)
 
 # ==========================================
@@ -109,12 +144,13 @@ elif menu == "💬 Reddit Intent":
 # ==========================================
 elif menu == "🐦 Twitter Sniper":
     st.header("Real-time Twitter Harvesting")
-    st.subheader("Automated Lead Feed")
+    
+    # NEW: Tab Lead Count
+    st.metric("Total Twitter Leads", len(df_tw))
     st.dataframe(df_tw, use_container_width=True, height=400)
     
     st.divider()
     st.subheader("Manual Pulse Check (Deep Search)")
-    # Logic from our previous sniper tool
     import zynd_twitter_sniper
     urls = zynd_twitter_sniper.get_sniper_urls()
     c1, c2, c3 = st.columns(3)
@@ -134,7 +170,6 @@ elif menu == "⚙️ Control Room":
 
     with row1_col1:
         st.subheader("🚀 GitHub Harvester")
-        st.write("Scan for new AI agent repos & builders.")
         if st.button("Start GitHub Engine"):
             with st.spinner("Executing..."):
                 zynd_leads.harvest_leads()
@@ -142,7 +177,6 @@ elif menu == "⚙️ Control Room":
 
     with row1_col2:
         st.subheader("⚡ Master Enricher")
-        st.write("Unlock hidden emails via commit logs.")
         if st.button("Engage Turbo Scraper"):
             with st.spinner("Executing..."):
                 zynd_master_scraper.enrich_database()
@@ -150,7 +184,6 @@ elif menu == "⚙️ Control Room":
 
     with row2_col1:
         st.subheader("📡 Reddit Radar")
-        st.write("Scan subreddits for intent & complaints.")
         if st.button("Start Reddit Engine"):
             with st.spinner("Executing..."):
                 zynd_daily_engine.run_reddit_scraper()
@@ -158,8 +191,21 @@ elif menu == "⚙️ Control Room":
 
     with row2_col2:
         st.subheader("🐦 Twitter Autopilot")
-        st.write("Harvest 'Build in Public' leads to sheet.")
         if st.button("Start Twitter Engine"):
             with st.spinner("Executing..."):
                 zynd_twitter_engine.run_twitter_scraper()
                 st.success("Twitter Updated!")
+
+    st.divider()
+    
+    # NEW: DATABASE MAINTENANCE SECTION
+    st.subheader("🧹 Database Maintenance")
+    st.write("Scan the Google Sheet and permanently delete any duplicate leads.")
+    if st.button("Clean Duplicates", type="primary"):
+        with st.spinner("Scanning database for duplicates..."):
+            removed = clean_database()
+            if removed > 0:
+                st.success(f"Database clean! Removed {removed} duplicate leads.")
+                st.cache_data.clear()
+            else:
+                st.info("Database is already perfectly clean. No duplicates found.")
