@@ -30,15 +30,27 @@ SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 @st.cache_data(ttl=300)
 def load_full_database():
-    try:
-        def get_url(name): return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(name)}"
-        gh = pd.read_csv(get_url("GitHub Leads"))
-        rd = pd.read_csv(get_url("Reddit Leads"))
-        tw = pd.read_csv(get_url("Twitter Leads"))
-        star = pd.read_csv(get_url("github_stargazer_leads"))
-        return gh, rd, tw, star
-    except:
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    """Loads each tab independently so one empty sheet doesn't crash the others."""
+    def get_url(name): 
+        return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(name)}"
+    
+    # Load GitHub
+    try: gh = pd.read_csv(get_url("GitHub Leads"))
+    except: gh = pd.DataFrame()
+    
+    # Load Reddit
+    try: rd = pd.read_csv(get_url("Reddit Leads"))
+    except: rd = pd.DataFrame()
+    
+    # Load Twitter
+    try: tw = pd.read_csv(get_url("Twitter Leads"))
+    except: tw = pd.DataFrame()
+    
+    # Load Stargazer
+    try: star = pd.read_csv(get_url("github_stargazer_leads"))
+    except: star = pd.DataFrame()
+    
+    return gh, rd, tw, star
 
 def clean_database():
     """Finds and removes duplicate leads across all tabs in Google Sheets."""
