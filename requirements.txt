@@ -5,3 +5,4 @@ gspread
 oauth2client
 python-dateutil
 feedparser
+beautifulsoup4
