@@ -198,12 +198,14 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
         # Reorder columns to match Google Sheet exact structure
         cols = ['lead_id', 'github_username', 'github_profile_url', 'source_repo', 'starred_at', 'bio', 'location', 'company', 'public_email', 'website', 'twitter_or_x', 'linkedin', 'public_repos_count', 'followers_count', 'recent_activity_date', 'matched_keywords', 'matched_repos', 'has_ai_agent_repo', 'lead_score', 'lead_bucket', 'suggested_outreach_action', 'outreach_status', 'reply_status', 'agent_registered', 'registered_agent_url', 'notes', 'created_at', 'updated_at']
         
-        # Ensure all columns exist
+# Ensure all columns exist
         for col in cols:
             if col not in df_final.columns:
                 df_final[col] = ''
                 
-        df_final = df_final[cols]
+        # THE MAGIC FIX: Replace NaN with empty strings
+        df_final = df_final[cols].fillna("") 
+        
         sheet.clear()
         sheet.update([df_final.columns.values.tolist()] + df_final.values.tolist())
         return len(df_final)
