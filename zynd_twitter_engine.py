@@ -3,13 +3,13 @@ import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-import feedparser
+import re
 
 # --- CONFIGURATION ---
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def run_twitter_scraper():
-    """Automated Twitter Lead Harvester with Multi-Bridge Failover"""
+    """Automated Twitter Lead Harvester via Google Search Dorking"""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
@@ -19,55 +19,47 @@ def run_twitter_scraper():
     except:
         return 0
 
+    # Get existing leads to prevent duplicates
     records = sheet.get_all_records()
     seen_urls = {str(row.get('Tweet URL', '')) for row in records}
 
-    # EXPANDED GTM QUERIES (More aggressive)
+    # GTM Search Dorks
     queries = [
-        '#buildinpublic "AI agent"',
-        '"my AI agent" (stuck OR issue OR help)',
-        '"CrewAI" OR "LangGraph" (alternative OR better)',
-        'building "AI agents" Python'
+        'site:x.com "building an AI agent"',
+        'site:x.com "CrewAI" "issue"',
+        'site:x.com "LangGraph" "help"'
     ]
 
     new_leads = []
-    # Using more stable RSS instances
-    instances = ["https://nitter.net", "https://nitter.cz", "https://nitter.privacydev.net"]
-    
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+
     for query in queries:
-        encoded_query = requests.utils.quote(query)
-        success = False
+        # We search Google for recent indexed tweets
+        search_url = f"https://www.google.com/search?q={requests.utils.quote(query)}&tbs=qdr:d"
         
-        for instance in instances:
-            if success: break
-            search_url = f"{instance}/search/rss?q={encoded_query}"
-            
-            try:
-                resp = requests.get(search_url, timeout=10)
-                if resp.status_code == 200:
-                    feed = feedparser.parse(resp.content)
-                    for entry in feed.entries:
-                        t_url = entry.link
-                        if t_url in seen_urls: continue
-                        
-                        author = entry.author if 'author' in entry else "Unknown"
-                        content = entry.summary if 'summary' in entry else ""
-                        date = datetime.now().strftime("%Y-%m-%d")
-                        
-                        # High-quality scoring logic
-                        score = 6
-                        if any(x in content.lower() for x in ['stuck', 'help', 'issue', 'broken']): score = 10
-                        elif 'building' in content.lower(): score = 8
-                        
-                        new_leads.append(["Twitter", author, t_url, content[:200].replace('\n', ' '), date, score])
-                        seen_urls.add(t_url)
-                    success = True
-            except:
-                continue
+        try:
+            response = requests.get(search_url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                html = response.text
+                # Extract Twitter URLs using Regex
+                urls = re.findall(r'https://x\.com/[^/]+/status/[0-9]+', html)
+                
+                for tweet_url in urls:
+                    if tweet_url in seen_urls: continue
+                    
+                    # Clean the URL
+                    clean_url = tweet_url.split('?')[0]
+                    # Since we are scraping HTML, we don't have the full text, 
+                    # so we label it as a "High-Intent Discovery"
+                    author = clean_url.split('/')[3]
+                    date = datetime.now().strftime("%Y-%m-%d")
+                    
+                    new_leads.append(["Twitter", author, clean_url, f"New lead found via {query}", date, 8])
+                    seen_urls.add(clean_url)
+        except Exception as e:
+            continue
 
     if new_leads:
-        # Sort by score so the best ones go in first
-        new_leads.sort(key=lambda x: x[5], reverse=True)
         sheet.append_rows(new_leads)
         return len(new_leads)
     return 0
