@@ -12,6 +12,7 @@ import zynd_daily_engine
 import zynd_twitter_engine
 import zynd_stargazer_engine
 import zynd_twitter_sniper
+import zynd_auto_pr # <-- NEW: The Auto-PR Engine
 
 # --- SETTINGS & THEME ---
 st.set_page_config(page_title="Zynd | GTM Command Center", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
@@ -118,7 +119,7 @@ if menu == "📈 Pipeline Overview":
     with col_left:
         st.subheader("Recent High-Intent Activity")
         if not df_rd.empty:
-            st.dataframe(df_rd.head(25), use_container_width=True)
+            st.data_editor(df_rd.head(25), use_container_width=True, num_rows="dynamic") # Upgraded to data_editor
         else:
             st.write("No recent activity found.")
 
@@ -167,7 +168,8 @@ elif menu == "💻 GitHub Builders":
             st.subheader("Target List")
             display_cols = ['github_profile_url', 'source_repo', 'matched_keywords', 'lead_score', 'suggested_outreach_action', 'outreach_status']
             existing_cols = [col for col in display_cols if col in filtered_star.columns]
-            st.dataframe(filtered_star.sort_values(by='lead_score', ascending=False)[existing_cols] if 'lead_score' in filtered_star.columns else filtered_star, use_container_width=True)
+            # Upgraded to data_editor
+            st.data_editor(filtered_star.sort_values(by='lead_score', ascending=False)[existing_cols] if 'lead_score' in filtered_star.columns else filtered_star, use_container_width=True, num_rows="dynamic")
             
             csv = filtered_star.to_csv(index=False).encode('utf-8')
             st.download_button(label="📥 Export Filtered Leads", data=csv, file_name='zynd_stargazer_leads.csv', mime='text/csv')
@@ -181,9 +183,9 @@ elif menu == "💻 GitHub Builders":
         if not df_gh.empty and 'Lead Score (1-10)' in df_gh.columns:
             filtered_gh = df_gh[df_gh['Lead Score (1-10)'] >= min_gh]
             st.metric("Total GitHub Leads (Filtered)", len(filtered_gh))
-            st.dataframe(filtered_gh, use_container_width=True, height=600)
+            st.data_editor(filtered_gh, use_container_width=True, height=600, num_rows="dynamic")
         else:
-            st.dataframe(df_gh, use_container_width=True, height=600)
+            st.data_editor(df_gh, use_container_width=True, height=600, num_rows="dynamic")
 
 # ==========================================
 # 💬 TAB: REDDIT INTENT
@@ -191,7 +193,7 @@ elif menu == "💻 GitHub Builders":
 elif menu == "💬 Reddit Intent":
     st.header("Social Intent & Pain Points")
     st.metric("Total Reddit Leads", len(df_rd))
-    st.dataframe(df_rd, use_container_width=True, height=600)
+    st.data_editor(df_rd, use_container_width=True, height=600, num_rows="dynamic")
 
 # ==========================================
 # 🐦 TAB: TWITTER SNIPER
@@ -199,7 +201,7 @@ elif menu == "💬 Reddit Intent":
 elif menu == "🐦 Twitter Sniper":
     st.header("Real-time Twitter Harvesting")
     st.metric("Total Twitter Leads", len(df_tw))
-    st.dataframe(df_tw, use_container_width=True, height=400)
+    st.data_editor(df_tw, use_container_width=True, height=400, num_rows="dynamic")
     
     st.divider()
     st.subheader("Manual Pulse Check (Deep Search)")
@@ -243,6 +245,32 @@ elif menu == "⚙️ Control Room":
                     st.error(f"Engine Error: {e}")
 
     st.divider()
+    
+    # --- NEW: AUTO-PR ENGINE UI ---
+    st.markdown("### 🤖 The Auto-PR Engine")
+    with st.container(border=True):
+        st.write("Automatically fork a prospect's repo, inject the `zyndai-agent` wrapper, and submit a high-converting Pull Request.")
+        
+        pr_col1, pr_col2 = st.columns([3, 1])
+        with pr_col1:
+            target_pr_repo = st.text_input("Target Repository (e.g., username/repository-name)", placeholder="developer/awesome-langchain-agent")
+        
+        with pr_col2:
+            st.write("") # Spacing
+            st.write("") # Spacing
+            if st.button("🚀 Deploy PR Payload", type="primary", use_container_width=True):
+                if target_pr_repo:
+                    with st.spinner(f"Forking {target_pr_repo} and writing code..."):
+                        success, result = zynd_auto_pr.generate_zynd_pr(target_pr_repo.strip())
+                        if success:
+                            st.success("PR Submitted Successfully!")
+                            st.markdown(f"[🔗 Click here to view the live PR]({result})")
+                        else:
+                            st.error(f"Failed to submit PR: {result}")
+                else:
+                    st.warning("Please enter a repository name first.")
+
+    st.divider()
     st.markdown("### ⚙️ Standard Harvesters")
     
     row1_col1, row1_col2 = st.columns(2)
@@ -279,14 +307,20 @@ elif menu == "⚙️ Control Room":
                 except Exception as e: st.error(str(e))
 
     with row2_col2:
+        # --- UPGRADED TWITTER UI ---
         st.subheader("🐦 Twitter Autopilot")
+        st.write("Scrapes targeted users and recent posts.")
         if st.button("Start Twitter Engine"):
-            with st.spinner("Executing..."):
+            with st.spinner("Bypassing API and scraping Twitter..."):
                 try:
-                    zynd_twitter_engine.run_twitter_scraper()
-                    st.success("Twitter Updated!")
-                    st.cache_data.clear()
-                except Exception as e: st.error(str(e))
+                    new_count = zynd_twitter_engine.run_twitter_scraper()
+                    if new_count and new_count > 0:
+                        st.success(f"Twitter Updated! Extracted {new_count} new users & posts.")
+                        st.cache_data.clear()
+                    else:
+                        st.info("Scan complete. No new leads found right now.")
+                except Exception as e: 
+                    st.error(f"Engine Error: {str(e)}")
 
     st.divider()
     
