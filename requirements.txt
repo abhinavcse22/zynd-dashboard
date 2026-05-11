@@ -10,3 +10,4 @@ plotly
 PyGithub
 git+https://github.com/mahrtayyab/tweety.git
 tweety-ns
+duckduckgo-search
