@@ -7,11 +7,16 @@ from tweety import Twitter
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# High-intent Twitter searches
+# --- THE LOOSENED NET ---
+# Broadened queries so Twitter's internal search engine doesn't choke
 TWITTER_QUERIES = [
-    '("building an AI agent" OR "my AI agent") -filter:links',
-    '("LangGraph" OR "CrewAI" OR "Autogen") ("stuck" OR "error" OR "issue")',
-    '("built an MCP" OR "n8n workflow")'
+    '"building an AI agent"',
+    '"my AI agent"',
+    'CrewAI error',
+    'LangGraph stuck',
+    'built an MCP',
+    'n8n AI workflow',
+    'OpenAI API' # Guaranteed to catch volume for testing
 ]
 
 def run_twitter_scraper():
@@ -21,6 +26,7 @@ def run_twitter_scraper():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
     
+    # Pre-load existing URLs so we don't scrape the same prospect twice
     records = sheet.get_all_records()
     existing_urls = {str(row.get('Post URL', '')) for row in records if row.get('Post URL')}
     new_leads = []
@@ -28,7 +34,7 @@ def run_twitter_scraper():
     # 2. Authenticate using Strict Dual-Token Bypass
     app = Twitter("session")
     
-    # Load both tokens from secrets
+    # Load both tokens from Streamlit secrets
     auth_token = st.secrets["twitter"]["auth_token"]
     ct0_token = st.secrets["twitter"]["ct0"]
     
@@ -47,14 +53,19 @@ def run_twitter_scraper():
     # 3. Scrape Users & Posts
     for query in TWITTER_QUERIES:
         try:
+            # pages=2 will pull a solid batch of recent posts without triggering rate limits
             tweets = app.search(query, pages=2) 
             
             for tweet in tweets:
                 post_url = f"https://x.com/{tweet.author.username}/status/{tweet.id}"
+                
+                # Deduplication Check
                 if post_url in existing_urls: continue
                 
+                # Junk Filter: Remove retweets so we only get the original builders
                 if getattr(tweet, 'is_retweet', False): continue
                 
+                # Priority Scoring
                 score = 8 if 'stuck' in query or 'error' in query else 6
                 
                 try:
@@ -62,6 +73,7 @@ def run_twitter_scraper():
                 except:
                     date_str = datetime.now().strftime('%Y-%m-%d')
                 
+                # Clean up text to prevent Google Sheets from breaking on weird formatting
                 clean_text = str(tweet.text).replace('\n', ' ')[:500]
                 
                 new_leads.append([
@@ -77,6 +89,7 @@ def run_twitter_scraper():
                 ])
                 existing_urls.add(post_url)
             
+            # Critical safety delay so your session doesn't get flagged
             time.sleep(5) 
             
         except Exception as e:
@@ -86,4 +99,5 @@ def run_twitter_scraper():
     if new_leads:
         sheet.append_rows(new_leads)
         return len(new_leads)
+    
     return 0
