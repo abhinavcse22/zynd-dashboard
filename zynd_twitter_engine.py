@@ -3,20 +3,19 @@ from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from tweety import Twitter
+from duckduckgo_search import DDGS
+import re
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# --- THE LOOSENED NET ---
-# Broadened queries so Twitter's internal search engine doesn't choke
+# We use advanced Google Dorks (site:x.com/status) to force the search engine 
+# to only return specific tweets about these topics.
 TWITTER_QUERIES = [
-    '"building an AI agent"',
-    '"my AI agent"',
-    'CrewAI error',
-    'LangGraph stuck',
-    'built an MCP',
-    'n8n AI workflow',
-    'OpenAI API' # Guaranteed to catch volume for testing
+    'site:x.com/status "building an AI agent"',
+    'site:x.com/status "my AI agent"',
+    'site:x.com/status "LangGraph" "stuck"',
+    'site:x.com/status "n8n workflow"',
+    'site:x.com/status "built an MCP"'
 ]
 
 def run_twitter_scraper():
@@ -26,76 +25,60 @@ def run_twitter_scraper():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
     
-    # Pre-load existing URLs so we don't scrape the same prospect twice
     records = sheet.get_all_records()
     existing_urls = {str(row.get('Post URL', '')) for row in records if row.get('Post URL')}
     new_leads = []
     
-    # 2. Authenticate using Strict Dual-Token Bypass
-    app = Twitter("session")
-    
-    # Load both tokens from Streamlit secrets
-    auth_token = st.secrets["twitter"]["auth_token"]
-    ct0_token = st.secrets["twitter"]["ct0"]
-    
-    cookies = {
-        "auth_token": auth_token,
-        "ct0": ct0_token
-    }
-    
-    print("🐦 Authenticating with Dual Tokens...")
-    try:
-        # Force-feed the raw cookies to bypass automatic handshake generation
-        app.load_cookies(cookies)
-    except Exception as e:
-        raise Exception(f"Twitter Auth Failed. Both tokens must be from an active, logged-in browser session. Error: {e}")
+    print("👻 Booting up Ghost Engine (Token-Free Scraper)...")
+    ddgs = DDGS()
 
-    # 3. Scrape Users & Posts
+    # 2. Scrape the Search Engine Index
     for query in TWITTER_QUERIES:
         try:
-            # pages=2 will pull a solid batch of recent posts without triggering rate limits
-            tweets = app.search(query, pages=2) 
+            # Bypass Twitter entirely, scrape the search engine directly
+            results = ddgs.text(query, max_results=15)
             
-            for tweet in tweets:
-                post_url = f"https://x.com/{tweet.author.username}/status/{tweet.id}"
+            if not results:
+                continue
                 
-                # Deduplication Check
-                if post_url in existing_urls: continue
+            for result in results:
+                post_url = result.get('href', '')
                 
-                # Junk Filter: Remove retweets so we only get the original builders
-                if getattr(tweet, 'is_retweet', False): continue
+                # Only save actual tweet URLs, ignore profile pages
+                if post_url in existing_urls or "/status/" not in post_url: 
+                    continue
                 
-                # Priority Scoring
+                # Extract the username right out of the URL
+                username_match = re.search(r'x\.com/([^/]+)/status', post_url)
+                if not username_match:
+                    username_match = re.search(r'twitter\.com/([^/]+)/status', post_url)
+                    
+                username = username_match.group(1) if username_match else "Unknown"
+                
                 score = 8 if 'stuck' in query or 'error' in query else 6
-                
-                try:
-                    date_str = tweet.date.strftime('%Y-%m-%d')
-                except:
-                    date_str = datetime.now().strftime('%Y-%m-%d')
-                
-                # Clean up text to prevent Google Sheets from breaking on weird formatting
-                clean_text = str(tweet.text).replace('\n', ' ')[:500]
+                date_str = datetime.now().strftime('%Y-%m-%d')
+                clean_text = str(result.get('body', '')).replace('\n', ' ')[:500]
                 
                 new_leads.append([
-                    "Build in Public", 
+                    "Ghost Search", 
                     "Twitter", 
-                    tweet.author.name, 
-                    f"https://x.com/{tweet.author.username}", 
+                    f"@{username}", 
+                    f"https://x.com/{username}", 
                     post_url, 
-                    query, 
+                    query.replace('site:x.com/status ', ''), 
                     clean_text, 
                     date_str, 
                     score
                 ])
                 existing_urls.add(post_url)
             
-            # Critical safety delay so your session doesn't get flagged
-            time.sleep(5) 
+            # Short delay so DuckDuckGo doesn't get mad
+            time.sleep(2) 
             
         except Exception as e:
             print(f"Failed to scrape query {query}: {e}")
 
-    # 4. Push to Database
+    # 3. Push to Database
     if new_leads:
         sheet.append_rows(new_leads)
         return len(new_leads)
