@@ -205,22 +205,6 @@ elif menu == "💻 GitHub Builders":
             
             st.download_button(label="📥 Export Filtered Leads to CSV", data=filtered_star.to_csv(index=False).encode('utf-8'), file_name='zynd_stargazer_leads.csv', mime='text/csv', type="primary")
 
-            st.divider()
-            
-            # --- SAAS FEATURE: GITHUB AI DRAFTER ---
-            st.subheader("🤖 Technical AI Drafter")
-            st.write("Draft highly technical, non-salesy outreach based on a developer's specific code activity.")
-            with st.container(border=True):
-                target_dev = st.selectbox("Select a Developer to Contact:", filtered_star['github_profile_url'].dropna().unique() if not filtered_star.empty else ["No data available"])
-                target_angle = st.radio("Outreach Angle:", ["Feature Collaboration", "Open Source Contribution", "Product Feedback"], horizontal=True)
-                
-                if st.button("Generate Contextual Outreach"):
-                    if target_angle == "Feature Collaboration":
-                        st.info(f"**Subject:** Quick question about your work on {f_repo[0] if f_repo else 'AI agents'}\n\n*Hey team, saw you starring some heavy agentic frameworks recently. I'm handling product ops for Zynd, and we are mapping out new routing architectures. Would love to get an engineer's perspective on how you're handling state management right now. Any interest in a quick chat?*")
-                    else:
-                        st.info(f"**Mock Technical Output for {target_dev}:**\n\n*Hey! Noticed you were digging into some complex open-source repos recently. I'm building a community around this exact stack. We're putting together a private beta and I'm actively looking for technical feedback from people who actually ship code. Mind if I send you a link?*")
-                    st.caption("(Note: Connect your LLM API key to make this output dynamic)")
-
     with gh_tab2:
         st.header("Standard Technical Discovery")
         q_col1, q_col2 = st.columns([3, 1])
@@ -250,19 +234,6 @@ elif menu == "💬 Reddit Intent":
     if not df_rd.empty:
         st.download_button(label="📥 Export Reddit Leads to CSV", data=df_rd.to_csv(index=False).encode('utf-8'), file_name='zynd_reddit_leads.csv', mime='text/csv')
 
-    st.divider()
-    # SAAS FEATURE: AI DRAFTER UI
-    st.subheader("🤖 AI Reply Drafter")
-    st.write("Generate a hyper-personalized, non-spammy Reddit reply based on a user's exact pain point.")
-    with st.container(border=True):
-        if not df_rd.empty and 'Post Title' in df_rd.columns:
-            target_post = st.selectbox("Select a Reddit Post to Target:", df_rd['Post Title'].dropna().unique())
-            if st.button("Generate AI Reply"):
-                st.info(f"**Mock Output for:** {target_post}\n\n*Hey man, I saw you were struggling with this. We actually built Zynd OS specifically to solve this exact agent routing issue. Might be worth checking out if you're still stuck.*")
-                st.caption("(Note: Connect your Groq/OpenAI API key to make this output dynamic)")
-        else:
-            st.warning("No Reddit data available to draft replies.")
-
 # ==========================================
 # 🐦 TAB: TWITTER SNIPER
 # ==========================================
@@ -275,19 +246,6 @@ elif menu == "🐦 Twitter Sniper":
     if not df_tw.empty:
         st.download_button(label="📥 Export Twitter Leads to CSV", data=df_tw.to_csv(index=False).encode('utf-8'), file_name='zynd_twitter_leads.csv', mime='text/csv')
     
-    st.divider()
-    # SAAS FEATURE: AI DRAFTER UI
-    st.subheader("🤖 AI DM Drafter")
-    st.write("Generate a personalized Twitter DM to recruit builders directly into the Zynd network.")
-    with st.container(border=True):
-        if not df_tw.empty and 'Username' in df_tw.columns:
-            target_user = st.selectbox("Select a Twitter Lead:", df_tw['Username'].dropna().unique())
-            if st.button("Generate Cold DM"):
-                st.info(f"**Mock Output for {target_user}:**\n\n*Hey! Loved your recent tweet about building AI agents. I'm building an ecosystem for developers like you to monetize those agents. Would love to get your feedback on what we're building.*")
-                st.caption("(Note: Connect your Groq/OpenAI API key to make this output dynamic)")
-        else:
-            st.warning("No Twitter data available to draft DMs.")
-
     st.divider()
     st.subheader("Manual Pulse Check (Deep Search)")
     try:
