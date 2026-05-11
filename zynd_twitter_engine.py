@@ -1,86 +1,81 @@
-import requests
-from bs4 import BeautifulSoup
+import time
+from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
-import time
-import urllib.parse
+from tweety import Twitter
 
-# --- CONFIGURATION ---
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
+# High-intent Twitter searches
+TWITTER_QUERIES = [
+    '("building an AI agent" OR "my AI agent") -filter:links',
+    '("LangGraph" OR "CrewAI" OR "Autogen") ("stuck" OR "error" OR "issue")',
+    '("built an MCP" OR "n8n workflow")'
+]
+
 def run_twitter_scraper():
-    """Unlimited Twitter Harvester via DuckDuckGo OSINT"""
+    # 1. Connect to Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
+    sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
+    
+    records = sheet.get_all_records()
+    existing_urls = {str(row.get('Post URL', '')) for row in records if row.get('Post URL')}
+    new_leads = []
+    
+    # 2. Authenticate Twitter Bypass
+    app = Twitter("session")
+    auth_token = st.secrets["twitter"]["auth_token"]
     
     try:
-        sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
-    except:
-        return 0
+        app.load_auth_token(auth_token)
+    except Exception as e:
+        raise Exception(f"Twitter Auth Failed. Token might be expired. Error: {e}")
 
-    records = sheet.get_all_records()
-    seen_urls = {str(row.get('Tweet URL', '')) for row in records}
-
-    # GTM Search Dorks (Using twitter.com for better DDG indexing)
-    queries = [
-        'site:twitter.com "building an AI agent"',
-        'site:twitter.com "LangGraph" "stuck"',
-        'site:twitter.com "CrewAI" "issue"'
-    ]
-
-    new_leads = []
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5'
-    }
-
-    print("🦆 Initiating DuckDuckGo OSINT Bypass...")
-
-    for query in queries:
-        url = "https://html.duckduckgo.com/html/"
-        data = {'q': query}
-        
+    # 3. Scrape Users & Posts
+    for query in TWITTER_QUERIES:
         try:
-            # DuckDuckGo uses a POST request for their HTML search
-            response = requests.post(url, headers=headers, data=data, timeout=15)
+            # pages=2 grabs roughly the latest 40-60 tweets
+            tweets = app.search(query, pages=2) 
             
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                results = soup.find_all('a', class_='result__snippet')
+            for tweet in tweets:
+                post_url = f"https://x.com/{tweet.author.username}/status/{tweet.id}"
+                if post_url in existing_urls: continue
                 
-                for result in results:
-                    tweet_url = result.get('href', '')
-                    
-                    # Unpack DuckDuckGo's redirect URL to get the real Twitter link
-                    if 'uddg=' in tweet_url:
-                        tweet_url = urllib.parse.unquote(tweet_url.split('uddg=')[1].split('&')[0])
-                    
-                    # Ensure it's a specific tweet, not just a profile
-                    if 'status' not in tweet_url: continue
-                    
-                    # Clean the URL
-                    clean_url = tweet_url.split('?')[0].replace('twitter.com', 'x.com')
-                    if clean_url in seen_urls: continue
-                    
-                    author = clean_url.split('/')[3]
-                    content = result.text.strip()
-                    date = datetime.now().strftime("%Y-%m-%d")
-                    
-                    # Score based on pain points
-                    score = 7
-                    if any(x in content.lower() for x in ['stuck', 'issue', 'error', 'help']): score = 10
-                    
-                    new_leads.append(["Twitter", author, clean_url, content, date, score])
-                    seen_urls.add(clean_url)
-                    
-            time.sleep(3) # Safety delay between searches
+                # Filter retweets to only get original builders
+                if getattr(tweet, 'is_retweet', False): continue
+                
+                score = 8 if 'stuck' in query or 'error' in query else 6
+                
+                try:
+                    date_str = tweet.date.strftime('%Y-%m-%d')
+                except:
+                    date_str = datetime.now().strftime('%Y-%m-%d')
+                
+                clean_text = str(tweet.text).replace('\n', ' ')[:500]
+                
+                # Appending both the User data and the Post data
+                new_leads.append([
+                    "Build in Public", 
+                    "Twitter", 
+                    tweet.author.name, 
+                    f"https://x.com/{tweet.author.username}", 
+                    post_url, 
+                    query, 
+                    clean_text, 
+                    date_str, 
+                    score
+                ])
+                existing_urls.add(post_url)
+            
+            time.sleep(5) # Delay to prevent getting flagged
+            
         except Exception as e:
-            continue
+            print(f"Failed to scrape query {query}: {e}")
 
+    # 4. Push to Database
     if new_leads:
         sheet.append_rows(new_leads)
         return len(new_leads)
