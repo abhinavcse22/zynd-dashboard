@@ -25,26 +25,34 @@ def run_twitter_scraper():
     existing_urls = {str(row.get('Post URL', '')) for row in records if row.get('Post URL')}
     new_leads = []
     
-    # 2. Authenticate Twitter Bypass
+    # 2. Authenticate using Strict Dual-Token Bypass
     app = Twitter("session")
-    auth_token = st.secrets["twitter"]["auth_token"]
     
+    # Load both tokens from secrets
+    auth_token = st.secrets["twitter"]["auth_token"]
+    ct0_token = st.secrets["twitter"]["ct0"]
+    
+    cookies = {
+        "auth_token": auth_token,
+        "ct0": ct0_token
+    }
+    
+    print("🐦 Authenticating with Dual Tokens...")
     try:
-        app.load_auth_token(auth_token)
+        # Force-feed the raw cookies to bypass automatic handshake generation
+        app.load_cookies(cookies)
     except Exception as e:
-        raise Exception(f"Twitter Auth Failed. Token might be expired. Error: {e}")
+        raise Exception(f"Twitter Auth Failed. Both tokens must be from an active, logged-in browser session. Error: {e}")
 
     # 3. Scrape Users & Posts
     for query in TWITTER_QUERIES:
         try:
-            # pages=2 grabs roughly the latest 40-60 tweets
             tweets = app.search(query, pages=2) 
             
             for tweet in tweets:
                 post_url = f"https://x.com/{tweet.author.username}/status/{tweet.id}"
                 if post_url in existing_urls: continue
                 
-                # Filter retweets to only get original builders
                 if getattr(tweet, 'is_retweet', False): continue
                 
                 score = 8 if 'stuck' in query or 'error' in query else 6
@@ -56,7 +64,6 @@ def run_twitter_scraper():
                 
                 clean_text = str(tweet.text).replace('\n', ' ')[:500]
                 
-                # Appending both the User data and the Post data
                 new_leads.append([
                     "Build in Public", 
                     "Twitter", 
@@ -70,7 +77,7 @@ def run_twitter_scraper():
                 ])
                 existing_urls.add(post_url)
             
-            time.sleep(5) # Delay to prevent getting flagged
+            time.sleep(5) 
             
         except Exception as e:
             print(f"Failed to scrape query {query}: {e}")
