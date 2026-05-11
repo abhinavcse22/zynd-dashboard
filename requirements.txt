@@ -7,3 +7,4 @@ python-dateutil
 feedparser
 beautifulsoup4
 plotly
+tweety-ns
