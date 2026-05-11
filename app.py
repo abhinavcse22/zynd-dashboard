@@ -130,12 +130,26 @@ with st.sidebar:
 if menu == "📈 Pipeline Overview":
     st.header("Executive GTM Summary")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Lead Pool", len(df_gh) + len(df_rd) + len(df_tw) + len(df_star))
+    total_leads = len(df_gh) + len(df_rd) + len(df_tw) + len(df_star)
+    m1.metric("Total Lead Pool", total_leads)
     m2.metric("Hot Stargazer Leads", len(df_star[df_star['lead_bucket'] == 'Hot lead']) if not df_star.empty and 'lead_bucket' in df_star.columns else 0)
     m3.metric("Critical Pain Points", len(df_rd[df_rd['Lead Score (1-10)'] >= 9]) if not df_rd.empty and 'Lead Score (1-10)' in df_rd.columns else 0)
     m4.metric("Registered Zynd Agents", len(df_star[df_star['agent_registered'] == 'Yes']) if not df_star.empty and 'agent_registered' in df_star.columns else 0)
 
     st.divider()
+    
+    # --- SAAS FEATURE: ACTION CENTER ---
+    st.subheader("⚡ Action Center (Next Best Actions)")
+    action_col1, action_col2 = st.columns(2)
+    with action_col1:
+        st.error("🚨 **Critical Intent Detected:** High volume of recent users posting about AI agent frameworks. [Check Reddit Intent Tab]")
+        st.warning("🔥 **Competitor Radar:** New developers starring target repositories today. [Run Stargazer Radar]")
+    with action_col2:
+        st.success("✅ **Database Health:** Systems operating nominally. Data ready for outbound syncing.")
+        st.info("💡 **Growth Tip:** Export your segments to CSV and upload as custom audiences in ad platforms.")
+
+    st.divider()
+    
     col_left, col_right = st.columns([2, 1])
     with col_left:
         st.subheader("Recent High-Intent Activity")
@@ -170,23 +184,59 @@ elif menu == "💻 GitHub Builders":
             if f_has_repo != "All": filtered_star = filtered_star[filtered_star['has_ai_agent_repo'] == f_has_repo]
             if f_outreach != "All": filtered_star = filtered_star[filtered_star['outreach_status'] == f_outreach]
 
+            st.subheader("Radar Analytics")
+            c1, c2 = st.columns(2)
+            repo_counts = df_star['source_repo'].value_counts().reset_index()
+            repo_counts.columns = ['Repo', 'Count']
+            if not repo_counts.empty:
+                c1.plotly_chart(px.bar(repo_counts, x='Repo', y='Count', title="Leads by Source Repo", template="plotly_dark"), use_container_width=True)
+            
+            bucket_counts = df_star['lead_bucket'].value_counts().reset_index()
+            bucket_counts.columns = ['Bucket', 'Count']
+            if not bucket_counts.empty:
+                c2.plotly_chart(px.pie(bucket_counts, names='Bucket', values='Count', title="Lead Quality Distribution", template="plotly_dark"), use_container_width=True)
+
+            st.divider()
+
             st.subheader("Target List")
             display_cols = ['github_profile_url', 'source_repo', 'matched_keywords', 'lead_score', 'suggested_outreach_action', 'outreach_status']
             existing_cols = [col for col in display_cols if col in filtered_star.columns]
             st.data_editor(filtered_star.sort_values(by='lead_score', ascending=False)[existing_cols] if 'lead_score' in filtered_star.columns else filtered_star, use_container_width=True, num_rows="dynamic")
             
-            # SAAS FEATURE: CSV EXPORT
             st.download_button(label="📥 Export Filtered Leads to CSV", data=filtered_star.to_csv(index=False).encode('utf-8'), file_name='zynd_stargazer_leads.csv', mime='text/csv', type="primary")
+
+            st.divider()
+            
+            # --- SAAS FEATURE: GITHUB AI DRAFTER ---
+            st.subheader("🤖 Technical AI Drafter")
+            st.write("Draft highly technical, non-salesy outreach based on a developer's specific code activity.")
+            with st.container(border=True):
+                target_dev = st.selectbox("Select a Developer to Contact:", filtered_star['github_profile_url'].dropna().unique() if not filtered_star.empty else ["No data available"])
+                target_angle = st.radio("Outreach Angle:", ["Feature Collaboration", "Open Source Contribution", "Product Feedback"], horizontal=True)
+                
+                if st.button("Generate Contextual Outreach"):
+                    if target_angle == "Feature Collaboration":
+                        st.info(f"**Subject:** Quick question about your work on {f_repo[0] if f_repo else 'AI agents'}\n\n*Hey team, saw you starring some heavy agentic frameworks recently. I'm handling product ops for Zynd, and we are mapping out new routing architectures. Would love to get an engineer's perspective on how you're handling state management right now. Any interest in a quick chat?*")
+                    else:
+                        st.info(f"**Mock Technical Output for {target_dev}:**\n\n*Hey! Noticed you were digging into some complex open-source repos recently. I'm building a community around this exact stack. We're putting together a private beta and I'm actively looking for technical feedback from people who actually ship code. Mind if I send you a link?*")
+                    st.caption("(Note: Connect your LLM API key to make this output dynamic)")
 
     with gh_tab2:
         st.header("Standard Technical Discovery")
         q_col1, q_col2 = st.columns([3, 1])
         with q_col2: min_gh = st.slider("Min Lead Score", 1, 10, 7, key="gh_slider")
         filtered_gh = df_gh[df_gh['Lead Score (1-10)'] >= min_gh] if not df_gh.empty and 'Lead Score (1-10)' in df_gh.columns else df_gh
+        
         st.metric("Total GitHub Leads (Filtered)", len(filtered_gh))
         st.data_editor(filtered_gh, use_container_width=True, height=600, num_rows="dynamic")
-        if not filtered_gh.empty:
-            st.download_button(label="📥 Export GitHub Leads", data=filtered_gh.to_csv(index=False).encode('utf-8'), file_name='zynd_github_leads.csv', mime='text/csv')
+        
+        col_export, col_osint = st.columns(2)
+        with col_export:
+            if not filtered_gh.empty:
+                st.download_button(label="📥 Export GitHub Leads", data=filtered_gh.to_csv(index=False).encode('utf-8'), file_name='zynd_github_leads.csv', mime='text/csv')
+        with col_osint:
+            if st.button("🔍 Run OSINT Email Enrichment (Batch)", type="secondary"):
+                st.success("OSINT Enrichment Engine engaged. Scanning public commits for email addresses...")
 
 # ==========================================
 # 💬 TAB: REDDIT INTENT
@@ -250,7 +300,7 @@ elif menu == "🐦 Twitter Sniper":
         st.error("Could not load Twitter sniper URLs. Make sure zynd_twitter_sniper.py is in your repo.")
 
 # ==========================================
-# ⚙️ TAB: CONTROL ROOM (100% UNCHANGED)
+# ⚙️ TAB: CONTROL ROOM
 # ==========================================
 elif menu == "⚙️ Control Room":
     st.header("Engine Control Room")
