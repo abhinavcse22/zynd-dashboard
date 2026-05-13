@@ -75,7 +75,10 @@ def load_full_database():
     except: tw = pd.DataFrame()
     try: star = pd.read_csv(get_url("github_stargazer_leads"))
     except: star = pd.DataFrame()
-    return gh, rd, tw, star
+    try: fork = pd.read_csv(get_url("Fork Sniper Leads")) # <--- NEW: Telling the app to read the new tab
+    except: fork = pd.DataFrame()
+    
+    return gh, rd, tw, star, fork
 
 def clean_database():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -110,7 +113,8 @@ def clean_database():
     except: pass
     return total_removed
 
-df_gh, df_rd, df_tw, df_star = load_full_database()
+# Unpack the 5 databases
+df_gh, df_rd, df_tw, df_star, df_fork = load_full_database()
 
 # --- SIDEBAR NAVIGATION ---
 with st.sidebar:
@@ -131,11 +135,11 @@ with st.sidebar:
 if menu == "📈 Pipeline Overview":
     st.header("Executive GTM Summary")
     m1, m2, m3, m4 = st.columns(4)
-    total_leads = len(df_gh) + len(df_rd) + len(df_tw) + len(df_star)
+    total_leads = len(df_gh) + len(df_rd) + len(df_tw) + len(df_star) + len(df_fork)
     m1.metric("Total Lead Pool", total_leads)
     m2.metric("Hot Stargazer Leads", len(df_star[df_star['lead_bucket'] == 'Hot lead']) if not df_star.empty and 'lead_bucket' in df_star.columns else 0)
     m3.metric("Critical Pain Points", len(df_rd[df_rd['Lead Score (1-10)'] >= 9]) if not df_rd.empty and 'Lead Score (1-10)' in df_rd.columns else 0)
-    m4.metric("Registered Zynd Agents", len(df_star[df_star['agent_registered'] == 'Yes']) if not df_star.empty and 'agent_registered' in df_star.columns else 0)
+    m4.metric("Active Code Forkers", len(df_fork))
 
     st.divider()
     
@@ -158,14 +162,15 @@ if menu == "📈 Pipeline Overview":
         else: st.write("No recent activity found.")
     with col_right:
         st.subheader("Platform Distribution")
-        chart_data = pd.DataFrame({'Source': ['GitHub', 'Reddit', 'Twitter'], 'Count': [len(df_gh), len(df_rd), len(df_tw)]})
+        chart_data = pd.DataFrame({'Source': ['GitHub', 'Reddit', 'Twitter', 'Forks'], 'Count': [len(df_gh), len(df_rd), len(df_tw), len(df_fork)]})
         st.bar_chart(chart_data.set_index('Source'))
 
 # ==========================================
 # 💻 TAB: GITHUB BUILDERS
 # ==========================================
 elif menu == "💻 GitHub Builders":
-    gh_tab1, gh_tab2 = st.tabs(["🔭 Stargazer Radar (Intent Leads)", "🗄️ Standard Builder DB"])
+    # --- NEW: Added a 3rd tab specifically for the Fork Sniper Leads ---
+    gh_tab1, gh_tab2, gh_tab3 = st.tabs(["🔭 Stargazer Radar (Intent Leads)", "🎯 Fork Sniped Leads", "🗄️ Standard Builder DB"])
     
     with gh_tab1:
         st.header("GitHub Stargazer Intelligence")
@@ -206,7 +211,19 @@ elif menu == "💻 GitHub Builders":
             
             st.download_button(label="📥 Export Filtered Leads to CSV", data=filtered_star.to_csv(index=False).encode('utf-8'), file_name='zynd_stargazer_leads.csv', mime='text/csv', type="primary")
 
+    # --- NEW UI FOR THE FORK LEADS ---
     with gh_tab2:
+        st.header("🎯 High-Intent Fork Builders")
+        st.write("Developers who actively copied competitor repositories to build their own projects.")
+        st.metric("Total Sniped Builders", len(df_fork))
+        
+        if not df_fork.empty:
+            st.data_editor(df_fork, use_container_width=True, height=500, num_rows="dynamic")
+            st.download_button(label="📥 Export Fork Leads to CSV", data=df_fork.to_csv(index=False).encode('utf-8'), file_name='zynd_fork_leads.csv', mime='text/csv', type="primary")
+        else:
+            st.info("No fork leads found in the database yet. Run the 'GitHub Fork Sniper' in the Control Room.")
+
+    with gh_tab3:
         st.header("Standard Technical Discovery")
         q_col1, q_col2 = st.columns([3, 1])
         with q_col2: min_gh = st.slider("Min Lead Score", 1, 10, 7, key="gh_slider")
@@ -318,6 +335,8 @@ elif menu == "⚙️ Control Room":
                     try:
                         leads_data, saved_count = zynd_github_sniper.run_fork_sniper(target_fork)
                         st.success(f"Extraction complete! Saved {saved_count} new high-intent builders directly to the database.")
+                        # Clear cache so the new tab updates instantly
+                        st.cache_data.clear()
                         st.dataframe(leads_data)
                     except Exception as e:
                         st.error(f"Error: {e}")
