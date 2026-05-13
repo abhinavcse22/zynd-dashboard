@@ -1,15 +1,20 @@
 import requests
 import time
+import random
 import streamlit as st
 
-# Pull the GitHub token securely from Streamlit Cloud secrets
-GITHUB_TOKEN = st.secrets["github"]["token"]
-HEADERS = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+# Pull the LIST of tokens securely from Streamlit Cloud secrets
+GITHUB_TOKENS = st.secrets["github"]["tokens"]
+
+def get_headers():
+    """Randomly selects a token from your pool to bypass rate limits."""
+    token = random.choice(GITHUB_TOKENS)
+    return {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
 
 def extract_hidden_email(username):
     """The OSINT trick: Digs into public events to find hidden commit emails."""
     url = f"https://api.github.com/users/{username}/events/public"
-    response = requests.get(url, headers=HEADERS)
+    response = requests.get(url, headers=get_headers())
     
     if response.status_code == 200:
         events = response.json()
@@ -25,7 +30,7 @@ def extract_hidden_email(username):
 def run_fork_sniper(target_repo, max_results=20):
     """Finds devs who forked a repo and extracts their data."""
     url = f"https://api.github.com/repos/{target_repo}/forks?sort=newest&per_page={max_results}"
-    response = requests.get(url, headers=HEADERS)
+    response = requests.get(url, headers=get_headers())
     
     if response.status_code != 200:
         raise Exception(f"GitHub API Error: {response.text}")
@@ -39,7 +44,7 @@ def run_fork_sniper(target_repo, max_results=20):
         profile_url = owner['html_url']
         
         # Pull extra profile data
-        user_response = requests.get(f"https://api.github.com/users/{username}", headers=HEADERS).json()
+        user_response = requests.get(f"https://api.github.com/users/{username}", headers=get_headers()).json()
         name = user_response.get('name', username)
         bio = user_response.get('bio', '')
         twitter = user_response.get('twitter_username', '')
