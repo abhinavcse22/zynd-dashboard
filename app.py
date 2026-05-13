@@ -309,16 +309,16 @@ elif menu == "⚙️ Control Room":
     
     st.markdown("### 🎯 Deep OSINT: GitHub Fork Sniper")
     with st.container(border=True):
-        st.write("Find high-intent developers who forked a competitor's repo and extract hidden emails.")
+        st.write("Find high-intent developers who forked a competitor's repo, extract hidden emails, and push to database.")
         target_fork = st.text_input("Target Repo (e.g., crewAIInc/crewAI)")
         
         if st.button("Snipe Competitor Forks", use_container_width=True):
             if target_fork:
-                with st.spinner(f"Extracting hidden data from {target_fork}..."):
+                with st.spinner(f"Extracting hidden data from {target_fork} and pushing to database..."):
                     try:
-                        leads = zynd_github_sniper.run_fork_sniper(target_fork)
-                        st.success(f"Successfully extracted {len(leads)} high-intent builders!")
-                        st.dataframe(leads)
+                        leads_data, saved_count = zynd_github_sniper.run_fork_sniper(target_fork)
+                        st.success(f"Extraction complete! Saved {saved_count} new high-intent builders directly to the database.")
+                        st.dataframe(leads_data)
                     except Exception as e:
                         st.error(f"Error: {e}")
             else:
