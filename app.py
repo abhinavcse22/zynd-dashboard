@@ -13,6 +13,7 @@ import zynd_twitter_engine
 import zynd_stargazer_engine
 import zynd_twitter_sniper
 import zynd_auto_pr 
+import zynd_github_sniper
 
 # --- SETTINGS & THEME ---
 st.set_page_config(page_title="Zynd | GTM Command Center", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
@@ -303,6 +304,25 @@ elif menu == "⚙️ Control Room":
                             st.markdown(f"[🔗 Click here to view the live PR]({result})")
                         else: st.error(f"Failed to submit PR: {result}")
                 else: st.warning("Please enter a repository name first.")
+
+    st.write("")
+    
+    st.markdown("### 🎯 Deep OSINT: GitHub Fork Sniper")
+    with st.container(border=True):
+        st.write("Find high-intent developers who forked a competitor's repo and extract hidden emails.")
+        target_fork = st.text_input("Target Repo (e.g., crewAIInc/crewAI)")
+        
+        if st.button("Snipe Competitor Forks", use_container_width=True):
+            if target_fork:
+                with st.spinner(f"Extracting hidden data from {target_fork}..."):
+                    try:
+                        leads = zynd_github_sniper.run_fork_sniper(target_fork)
+                        st.success(f"Successfully extracted {len(leads)} high-intent builders!")
+                        st.dataframe(leads)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.warning("Enter a target repository first.")
 
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
