@@ -21,75 +21,81 @@ def run_reddit_scraper():
         url_idx = raw_data[0].index('Post URL')
         existing_urls = {str(row[url_idx]) for row in raw_data[1:] if len(row) > url_idx and row[url_idx]}
 
-    # 3. The Target Matrix (Subreddits & Pain Point Keywords)
-    subreddits = ['LangChain', 'CrewAI', 'AutoGPT', 'artificial', 'LocalLLaMA']
-    queries = ['"error"', '"stuck"', '"help"', '"alternative"', '"frustrated"']
+    # 3. The Target Matrix
+    subreddits = ['LangChain', 'crewAI', 'AutoGPT', 'LocalLLaMA', 'artificial']
+    pain_keywords = ['error', 'stuck', 'help', 'alternative', 'frustrated', 'issue', 'bug', 'fail']
     
-    # 4. THE FORGED HEADER (This is the magic that bypasses the cloud block)
+    # 4. Aggressive Header Forging (Added Accept headers to look more human)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 ZyndOS/1.0'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/javascript, */*; q=0.01'
     }
 
     new_leads = []
     
     for sub in subreddits:
-        for query in queries:
-            # The .json Backdoor URL
-            url = f"https://www.reddit.com/r/{sub}/search.json?q={query}&restrict_sr=1&sort=new&limit=10"
-            try:
-                response = requests.get(url, headers=headers)
-                
-                # If Reddit lets us through, parse the data
-                if response.status_code == 200:
-                    data = response.json()
-                    posts = data.get('data', {}).get('children', [])
-                    
-                    for post in posts:
-                        post_data = post['data']
-                        post_url = f"https://www.reddit.com{post_data['permalink']}"
-                        
-                        # Skip if we already have it
-                        if post_url in existing_urls:
-                            continue
-                            
-                        title = post_data.get('title', '')
-                        text = post_data.get('selftext', '').replace('\n', ' ')[:500]
-                        author = post_data.get('author', 'unknown')
-                        
-                        # Skip deleted accounts or empty posts
-                        if author == '[deleted]' or not text:
-                            continue
-                            
-                        # Dynamic Lead Scoring
-                        score = 6
-                        if 'error' in query or 'stuck' in query: score += 2
-                        if 'agent' in text.lower() or 'agent' in title.lower(): score += 1
-                        if 'alternative' in query: score += 3 # Very high intent to switch tools
-                        
-                        score = min(score, 10) # Cap at a score of 10
-                        date_str = datetime.now().strftime('%Y-%m-%d')
-                        
-                        # Package the payload
-                        new_leads.append([
-                            "Reddit .json Backdoor", # Source
-                            f"r/{sub}",              # Subreddit
-                            f"u/{author}",           # Author
-                            title,                   # Post Title
-                            text,                    # Post Text
-                            post_url,                # Post URL
-                            date_str,                # Date
-                            score                    # Lead Score (1-10)
-                        ])
-                        existing_urls.add(post_url)
-                        
-            except Exception as e:
-                print(f"Failed to scrape r/{sub}: {e}")
-                continue
+        # THE HACK: Rip the raw 'new' feed instead of using the search endpoint
+        url = f"https://www.reddit.com/r/{sub}/new.json?limit=50"
+        
+        try:
+            response = requests.get(url, headers=headers)
             
-            # 1.5 second pause between queries so Reddit doesn't ban the Streamlit server
-            time.sleep(1.5) 
+            if response.status_code == 200:
+                data = response.json()
+                posts = data.get('data', {}).get('children', [])
+                
+                for post in posts:
+                    post_data = post['data']
+                    post_url = f"https://www.reddit.com{post_data['permalink']}"
+                    
+                    if post_url in existing_urls:
+                        continue
+                        
+                    title = post_data.get('title', '')
+                    text = post_data.get('selftext', '')
+                    author = post_data.get('author', 'unknown')
+                    
+                    if author == '[deleted]':
+                        continue
+                        
+                    # 5. Local Python Filtering (Bypasses Reddit's search filters)
+                    combined_text = (title + " " + text).lower()
+                    
+                    # Check if any pain keyword exists in the post
+                    found_keywords = [kw for kw in pain_keywords if kw in combined_text]
+                    
+                    if not found_keywords:
+                        continue # Skip this post if everything is fine
+                        
+                    # Dynamic Lead Scoring based on keyword density
+                    score = 6 + len(found_keywords) 
+                    if 'agent' in combined_text: score += 2
+                    score = min(score, 10) # Cap at 10
+                    
+                    date_str = datetime.now().strftime('%Y-%m-%d')
+                    
+                    # Package the payload
+                    new_leads.append([
+                        "Reddit Raw Feed Hack",  # Source
+                        f"r/{sub}",              # Subreddit
+                        f"u/{author}",           # Author
+                        title,                   # Post Title
+                        text.replace('\n', ' ')[:500], # Post Text
+                        post_url,                # Post URL
+                        date_str,                # Date
+                        score                    # Lead Score (1-10)
+                    ])
+                    existing_urls.add(post_url)
+            else:
+                print(f"⚠️ Reddit blocked r/{sub} with HTTP Code: {response.status_code}")
+                
+        except Exception as e:
+            print(f"❌ Failed to scrape r/{sub}: {e}")
+        
+        # 2-second pause. DO NOT remove this, or Reddit will instantly ban the Streamlit IP
+        time.sleep(2) 
 
-    # 5. Push directly to Google Sheets
+    # 6. Push directly to Google Sheets
     if new_leads:
         sheet.append_rows(new_leads)
         return len(new_leads)
