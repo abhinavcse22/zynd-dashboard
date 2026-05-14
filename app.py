@@ -426,6 +426,32 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a target repository first.")
 
+    st.write("")
+    st.markdown("### 👻 The Telegram Ghost (Group Infiltrator)")
+    with st.container(border=True):
+        st.write("Silently infiltrate competitor Telegram groups and extract all active member usernames.")
+        
+        target_tg_groups = st.text_area(
+            "Target Channels (Paste links or @usernames, one per line)", 
+            placeholder="https://t.me/langchain_ai\n@crewAI\nhttps://t.me/web3builders",
+            height=100
+        )
+        
+        if st.button("Infiltrate & Extract Telegram Leads", type="primary", use_container_width=True):
+            if target_tg_groups:
+                with st.spinner("Ghost account connecting to Telegram API and ripping member lists..."):
+                    try:
+                        import zynd_telegram_ghost
+                        tg_leads, saved_count = zynd_telegram_ghost.run_telegram_scraper(target_tg_groups)
+                        st.success(f"Heist Complete! Extracted and saved {saved_count} new targeted leads to the database.")
+                        if tg_leads:
+                            st.dataframe(tg_leads, use_container_width=True)
+                        st.cache_data.clear() # Refresh app data
+                    except Exception as e:
+                        st.error(f"Infiltration Error: {e}")
+            else:
+                st.warning("Enter at least one target Telegram group first.")
+
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
     row1_col1, row1_col2 = st.columns(2)
