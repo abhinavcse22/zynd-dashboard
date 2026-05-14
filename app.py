@@ -452,6 +452,33 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter at least one target Telegram group first.")
 
+    st.write("")
+    st.markdown("### 🎥 The Creator Engine (Influencer Networker)")
+    with st.container(border=True):
+        st.write("Hunt down YouTube micro-influencers (500 - 100k subs) building tutorials in specific AI/Web3 niches.")
+        
+        creator_col1, creator_col2 = st.columns([3, 1])
+        with creator_col1:
+            youtube_niche = st.text_input("Target Niche / Search Query", placeholder="e.g., 'LangChain tutorial', 'AutoGPT build', 'Web3 AI'")
+        with creator_col2:
+            max_vids = st.number_input("Videos to Scan", min_value=10, max_value=50, value=25)
+            
+        if st.button("Hunt Creators 🎯", type="primary", use_container_width=True):
+            if youtube_niche:
+                with st.spinner("Scanning YouTube API for high-leverage micro-influencers..."):
+                    try:
+                        import zynd_creator_engine
+                        creators, saved_count = zynd_creator_engine.hunt_micro_influencers(youtube_niche, max_vids)
+                        if saved_count > 0:
+                            st.success(f"Target Acquired: Saved {saved_count} new micro-influencers to your database.")
+                            st.dataframe(creators, use_container_width=True)
+                        else:
+                            st.warning("No new micro-influencers found. Try a broader search or increase the scan limit.")
+                    except Exception as e:
+                        st.error(f"Engine Error: {e}")
+            else:
+                st.warning("Enter a search query first.")
+
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
     row1_col1, row1_col2 = st.columns(2)
