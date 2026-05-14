@@ -9,6 +9,6 @@ beautifulsoup4
 plotly
 PyGithub
 git+https://github.com/mahrtayyab/tweety.git
-grok
+groq
 tweety-ns
 duckduckgo-search
