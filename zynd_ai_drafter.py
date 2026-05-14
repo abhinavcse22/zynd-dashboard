@@ -33,7 +33,7 @@ def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
                 "Content-Type": "application/json"
             },
             data=json.dumps({
-                "model": "mistralai/mistral-7b-instruct:free",
+                "model": "openrouter/free", # The auto-router that never 404s
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
