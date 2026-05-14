@@ -1,12 +1,14 @@
-import os
+import google.generativeai as genai
 import streamlit as st
-from groq import Groq
 
-# Initialize the ultra-fast Groq client
-client = Groq(api_key=st.secrets["groq"]["api_key"])
+# Configure the Gemini Engine securely
+genai.configure(api_key=st.secrets["gemini"]["api_key"])
+
+# Using the hyper-fast Flash model for instantaneous drafting
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
-    """Generates a highly technical, multi-step outreach sequence."""
+    """Generates a highly technical, multi-step outreach sequence using Gemini."""
     
     prompt = f"""
     You are a technical founder doing elite developer outreach for 'Zynd', an OS and network for AI agents and Web3 builders.
@@ -27,15 +29,7 @@ def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
     """
 
     try:
-        completion = client.chat.completions.create(
-            model="llama3-70b-8192",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=1024,
-            top_p=1,
-            stream=False,
-            stop=None,
-        )
-        return completion.choices[0].message.content
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
         return f"Error connecting to AI API: {str(e)}"
