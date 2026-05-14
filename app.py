@@ -323,6 +323,28 @@ elif menu == "⚙️ Control Room":
                 else: st.warning("Please enter a repository name first.")
 
     st.write("")
+    st.markdown("### 🧠 Pro AI Drafter (Outreach Sequence Builder)")
+    with st.container(border=True):
+        st.write("Instantly generate hyper-personalized outreach sequences for any lead using Groq LLaMA-3.")
+        
+        draft_col1, draft_col2 = st.columns(2)
+        with draft_col1:
+            lead_n = st.text_input("Lead Name / Handle", placeholder="e.g., @AgentBuilder99")
+            lead_intent = st.text_input("Intent Source", placeholder="e.g., Forked crewAI, Complaining about LangChain")
+        with draft_col2:
+            lead_context = st.text_area("Lead Context (Paste bio or Reddit post)", height=110)
+            
+        if st.button("Generate Outreach Sequence ⚡", type="primary", use_container_width=True):
+            if lead_n and lead_context:
+                with st.spinner("AI is analyzing intent and writing the sequence..."):
+                    import zynd_ai_drafter
+                    sequence = zynd_ai_drafter.generate_outreach_sequence(lead_n, lead_intent, lead_context)
+                    st.success("Sequence Generated!")
+                    st.code(sequence, language="markdown")
+            else:
+                st.warning("Please provide the lead's name and context to generate a message.")
+
+    st.write("")
     
     st.markdown("### 🎯 Deep OSINT: GitHub Fork Sniper")
     with st.container(border=True):
