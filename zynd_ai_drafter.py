@@ -33,7 +33,7 @@ def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
                 "Content-Type": "application/json"
             },
             data=json.dumps({
-                "model": "meta-llama/llama-3.1-8b-instruct:free", # Updated to the live 3.1 model
+                "model": "mistralai/mistral-7b-instruct:free"", # Updated to the live 3.1 model
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
