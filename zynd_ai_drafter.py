@@ -3,7 +3,7 @@ import json
 import streamlit as st
 
 def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
-    """Generates a highly technical outreach sequence using OpenRouter's free LLaMA-3."""
+    """Generates a highly technical outreach sequence using OpenRouter."""
     
     prompt = f"""
     You are a technical founder doing elite developer outreach for 'Zynd', an OS and network for AI agents and Web3 builders.
@@ -28,12 +28,12 @@ def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
             url="https://openrouter.ai/api/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {st.secrets['openrouter']['api_key']}",
-                "HTTP-Referer": "https://zynd.io", # Required by OpenRouter
-                "X-Title": "Zynd OS", # Required by OpenRouter
+                "HTTP-Referer": "https://zynd.io", 
+                "X-Title": "Zynd OS", 
                 "Content-Type": "application/json"
             },
             data=json.dumps({
-                "model": "mistralai/mistral-7b-instruct:free"", # Updated to the live 3.1 model
+                "model": "mistralai/mistral-7b-instruct:free",
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
