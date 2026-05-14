@@ -325,15 +325,76 @@ elif menu == "⚙️ Control Room":
     st.write("")
     st.markdown("### 🧠 Pro AI Drafter (Outreach Sequence Builder)")
     with st.container(border=True):
-        st.write("Instantly generate hyper-personalized outreach sequences for any lead using Groq LLaMA-3.")
+        st.write("Instantly generate hyper-personalized outreach sequences for any lead using OpenRouter.")
         
-        draft_col1, draft_col2 = st.columns(2)
-        with draft_col1:
-            lead_n = st.text_input("Lead Name / Handle", placeholder="e.g., @AgentBuilder99")
-            lead_intent = st.text_input("Intent Source", placeholder="e.g., Forked crewAI, Complaining about LangChain")
-        with draft_col2:
-            lead_context = st.text_area("Lead Context (Paste bio or Reddit post)", height=110)
+        # Toggle between Database or Manual
+        input_mode = st.radio("Lead Selection Method:", ["🗄️ Select from Database", "✍️ Manual Entry"], horizontal=True)
+        
+        lead_n, lead_intent, lead_context = "", "", ""
+        
+        if input_mode == "🗄️ Select from Database":
+            db_col1, db_col2 = st.columns(2)
+            with db_col1:
+                db_choice = st.selectbox("Select Target Database", ["Fork Sniper Leads", "Reddit Leads", "Twitter Leads", "GitHub Stargazers"])
             
+            with db_col2:
+                if db_choice == "Fork Sniper Leads" and not df_fork.empty and 'Username' in df_fork.columns:
+                    lead_list = df_fork['Username'].dropna().tolist()
+                    selected_lead = st.selectbox("Select Prospect", lead_list)
+                    if selected_lead:
+                        row = df_fork[df_fork['Username'] == selected_lead].iloc[0]
+                        lead_n = str(row['Username'])
+                        lead_intent = str(row.get('Source', 'Fork Sniper Engine'))
+                        lead_context = str(row.get('Bio', 'GitHub Builder'))
+                        
+                elif db_choice == "Reddit Leads" and not df_rd.empty:
+                    # Dynamically find the user column
+                    user_col = 'Author' if 'Author' in df_rd.columns else ('Username' if 'Username' in df_rd.columns else df_rd.columns[0])
+                    lead_list = df_rd[user_col].dropna().astype(str).tolist()
+                    selected_lead = st.selectbox("Select Prospect", lead_list)
+                    if selected_lead:
+                        row = df_rd[df_rd[user_col] == selected_lead].iloc[0]
+                        lead_n = str(row[user_col])
+                        lead_intent = f"Reddit Post in {row.get('Subreddit', 'Unknown Sub')}"
+                        lead_context = str(row.get('Title', '')) + " - " + str(row.get('Content', ''))
+                        
+                elif db_choice == "Twitter Leads" and not df_tw.empty:
+                    user_col = 'Username' if 'Username' in df_tw.columns else df_tw.columns[0]
+                    lead_list = df_tw[user_col].dropna().astype(str).tolist()
+                    selected_lead = st.selectbox("Select Prospect", lead_list)
+                    if selected_lead:
+                        row = df_tw[df_tw[user_col] == selected_lead].iloc[0]
+                        lead_n = str(row[user_col])
+                        lead_intent = "Twitter Intent Snipe"
+                        lead_context = str(row.get('Tweet', row.get('Bio', '')))
+                        
+                elif db_choice == "GitHub Stargazers" and not df_star.empty:
+                    url_col = 'github_profile_url' if 'github_profile_url' in df_star.columns else df_star.columns[0]
+                    lead_list = df_star[url_col].dropna().astype(str).tolist()
+                    selected_lead = st.selectbox("Select Prospect", lead_list)
+                    if selected_lead:
+                        row = df_star[df_star[url_col] == selected_lead].iloc[0]
+                        lead_n = str(row[url_col]).split('/')[-1] # Extract username from URL
+                        lead_intent = f"Starred {row.get('source_repo', 'Competitor Repo')}"
+                        lead_context = f"Matched keywords: {row.get('matched_keywords', 'AI, Agent, Web3')}"
+                else:
+                    st.warning("No data found in this database yet.")
+
+            # Show the user what data is being sent to the AI
+            if lead_n:
+                st.info(f"**Target:** {lead_n} | **Intent:** {lead_intent}")
+                with st.expander("View Internal Context Data"):
+                    st.write(lead_context)
+
+        else:
+            # The Manual Entry Mode
+            draft_col1, draft_col2 = st.columns(2)
+            with draft_col1:
+                lead_n = st.text_input("Lead Name / Handle", placeholder="e.g., @AgentBuilder99")
+                lead_intent = st.text_input("Intent Source", placeholder="e.g., Forked crewAI, Complaining about LangChain")
+            with draft_col2:
+                lead_context = st.text_area("Lead Context (Paste bio or Reddit post)", height=110)
+                
         if st.button("Generate Outreach Sequence ⚡", type="primary", use_container_width=True):
             if lead_n and lead_context:
                 with st.spinner("AI is analyzing intent and writing the sequence..."):
@@ -342,7 +403,7 @@ elif menu == "⚙️ Control Room":
                     st.success("Sequence Generated!")
                     st.code(sequence, language="markdown")
             else:
-                st.warning("Please provide the lead's name and context to generate a message.")
+                st.warning("Please select a lead or provide context first.")
 
     st.write("")
     
