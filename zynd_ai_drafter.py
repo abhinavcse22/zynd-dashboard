@@ -1,14 +1,9 @@
-import google.generativeai as genai
+import requests
+import json
 import streamlit as st
 
-# Configure the Gemini Engine securely
-genai.configure(api_key=st.secrets["gemini"]["api_key"])
-
-# Using the hyper-fast Flash model for instantaneous drafting
-model = genai.GenerativeModel('gemini-1.5-flash')
-
 def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
-    """Generates a highly technical, multi-step outreach sequence using Gemini."""
+    """Generates a highly technical outreach sequence using OpenRouter's free LLaMA-3."""
     
     prompt = f"""
     You are a technical founder doing elite developer outreach for 'Zynd', an OS and network for AI agents and Web3 builders.
@@ -29,7 +24,28 @@ def generate_outreach_sequence(lead_name, intent_source, bio_or_post):
     """
 
     try:
-        response = model.generate_content(prompt)
-        return response.text
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {st.secrets['openrouter']['api_key']}",
+                "HTTP-Referer": "https://zynd.io", # Required by OpenRouter
+                "X-Title": "Zynd OS", # Required by OpenRouter
+                "Content-Type": "application/json"
+            },
+            data=json.dumps({
+                "model": "meta-llama/llama-3-8b-instruct:free", # The completely free model
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            })
+        )
+        
+        response_data = response.json()
+        
+        if response.status_code == 200:
+            return response_data['choices'][0]['message']['content']
+        else:
+            return f"API Error: {response_data.get('error', 'Unknown Error')}"
+            
     except Exception as e:
-        return f"Error connecting to AI API: {str(e)}"
+        return f"System Error: {str(e)}"
