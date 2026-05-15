@@ -720,6 +720,35 @@ elif menu == "⚙️ Control Room":
                         else: st.info("Scan complete. No new leads found right now.")
                     except Exception as e: st.error(f"Engine Error: {str(e)}")
 
+    st.write("---")
+    st.markdown("### 🗂️ The AI Agent Directory Scanner")
+    with st.container(border=True):
+        st.write("Scan 'Awesome Lists' and agent directories to find developers who have already built products and invite them to publish on Zynd.")
+        
+        dir_col1, dir_col2 = st.columns([3, 1])
+        with dir_col1:
+            target_directory = st.text_input("Target Directory Repo", placeholder="e.g., e2b-dev/awesome-ai-agents")
+        
+        if st.button("Scan Directory & Extract Projects 🔍", type="primary", use_container_width=True):
+            if target_directory:
+                with st.spinner(f"Parsing markdown directory {target_directory}..."):
+                    try:
+                        import zynd_directory_scanner
+                        projects, status = zynd_directory_scanner.scan_awesome_directory(target_directory)
+                        
+                        if isinstance(projects, list) and len(projects) > 0:
+                            st.success(f"Directory Ripped! Extracted {len(projects)} pre-built agent projects.")
+                            st.dataframe(projects, use_container_width=True)
+                            st.cache_data.clear()
+                        elif isinstance(projects, list) and len(projects) == 0:
+                            st.warning("Scan complete, but no new projects were found (they may already be in your DB).")
+                        else:
+                            st.error(status) # Prints the error string
+                    except Exception as e:
+                        st.error(f"Scanner Error: {e}")
+            else:
+                st.warning("Enter a target GitHub directory repository.")
+
     st.divider()
     st.subheader("🧹 Database Maintenance")
     if st.button("Clean Duplicates", type="primary"):
