@@ -778,6 +778,36 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a search query.")
 
+    st.write("---")
+    st.markdown("### 🥷 Deep OSINT: Competitor Follower Stealer")
+    with st.container(border=True):
+        st.write("Download lists of developers who follow your direct competitors on Twitter/X.")
+        
+        steal_col1, steal_col2 = st.columns([3, 1])
+        with steal_col1:
+            comp_handle = st.text_input("Competitor Twitter Handle (No @)", placeholder="LangChainAI")
+        with steal_col2:
+            steal_count = st.number_input("Followers to Extract", min_value=10, max_value=500, value=50)
+            
+        if st.button("Initiate Follower Heist 🏴‍☠️", type="primary", use_container_width=True):
+            if comp_handle:
+                with st.spinner(f"Bypassing limits to extract @{comp_handle}'s follower network..."):
+                    try:
+                        import zynd_follower_stealer
+                        # Reminder: You'll need a RapidAPI key in secrets for real live data
+                        stolen, count = zynd_follower_stealer.steal_twitter_followers(comp_handle, steal_count)
+                        
+                        if count > 0:
+                            st.success(f"Heist Successful: Stole {count} followers from @{comp_handle}.")
+                            st.dataframe(stolen, use_container_width=True)
+                            st.cache_data.clear()
+                        else:
+                            st.warning("No new followers extracted (they might already be in your DB).")
+                    except Exception as e:
+                        st.error(f"Extraction Error: {e}. Check your API keys.")
+            else:
+                st.warning("Enter a target competitor handle.")
+
     st.divider()
     st.subheader("🧹 Database Maintenance")
     if st.button("Clean Duplicates", type="primary"):
