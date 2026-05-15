@@ -7,9 +7,12 @@ GITHUB_TOKEN = st.secrets.get("github", {}).get("token", "")
 def fetch_latest_commit_and_post(repo_path):
     """Fetches the latest commit from your repo and writes a social post about it."""
     
+    # 0. Clean the input (In case someone pastes the full URL)
+    clean_repo = repo_path.replace("https://github.com/", "").strip("/")
+    
     # 1. Fetch the latest commit data from GitHub
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"} if GITHUB_TOKEN else {}
-    url = f"https://api.github.com/repos/{repo_path}/commits?per_page=1"
+    url = f"https://api.github.com/repos/{clean_repo}/commits?per_page=1"
     
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
