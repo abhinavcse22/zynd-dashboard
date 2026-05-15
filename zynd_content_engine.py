@@ -1,53 +1,57 @@
 import requests
 import json
 import streamlit as st
+from googlesearch import search
 
-def generate_daily_content(df_reddit, df_twitter):
-    """Generates 3 daily content ideas based on live market pain points."""
+def get_live_market_context(competitors):
+    """Scrapes Google for the absolute latest news on specific competitors."""
+    intel = []
+    try:
+        query = f"({' OR '.join(competitors)}) (launch OR update OR 'new feature' OR issue)"
+        # advanced=True provides descriptions/snippets which the AI needs
+        for result in search(query, num_results=5, advanced=True):
+            intel.append(f"Source: {result.title}\nSnippet: {result.description}")
+    except Exception:
+        pass
+    return "\n\n".join(intel) if intel else "No major live updates found."
+
+def generate_hybrid_content(df_reddit, df_twitter, competitor_list):
+    """Synthesizes database signals with live web intelligence."""
     
-    # 1. Extract the raw pain points directly from your scrapers
-    pain_points = []
-    
+    # 1. Fetch Live External Data
+    live_signals = get_live_market_context(competitor_list)
+
+    # 2. Extract Internal Database Signals
+    db_signals = []
     if not df_reddit.empty:
-        content_col = 'Title' if 'Title' in df_reddit.columns else df_reddit.columns[0]
-        # Grab the top 3 most recent Reddit complaints
-        pain_points.extend(df_reddit[content_col].dropna().astype(str).head(3).tolist())
-        
+        col = 'Title' if 'Title' in df_reddit.columns else df_reddit.columns[0]
+        db_signals.extend(df_reddit[col].dropna().astype(str).head(3).tolist())
     if not df_twitter.empty:
-        tweet_col = 'Tweet' if 'Tweet' in df_twitter.columns else df_twitter.columns[0]
-        # Grab the top 3 most recent Twitter signals
-        pain_points.extend(df_twitter[tweet_col].dropna().astype(str).head(3).tolist())
-        
-    context_str = "\n".join([f"- {p}" for p in pain_points]) if pain_points else "General Web3 and AI Agent building challenges."
+        col = 'Tweet' if 'Tweet' in df_twitter.columns else df_twitter.columns[0]
+        db_signals.extend(df_twitter[col].dropna().astype(str).head(3).tolist())
+    
+    internal_context = "\n".join([f"- {s}" for s in db_signals])
 
-    # 2. Build the Data-Driven Prompt
+    # 3. The Synthesis Prompt
     prompt = f"""
-    You are the elite Head of Growth for 'Zynd', an OS and network for AI agents and Web3 builders.
+    You are the 'Chief Growth Officer' for Zynd.
     
-    Here are the actual pain points and conversations developers are having TODAY based on our raw scraper data:
-    {context_str}
+    INTERNAL DATA (What our target users are complaining about):
+    {internal_context}
     
-    Generate 3 FULL, ready-to-publish social media posts (for Twitter/LinkedIn) that Zynd should post today to attract these developers.
+    EXTERNAL DATA (What our competitors are doing/launching right now):
+    {live_signals}
     
-    CRITICAL RULES:
-    Rule 1: WRITE THE FULL POST. Do not just give me titles or hooks. Each post MUST be 100-150 words long.
-    Rule 2: Each post must contain:
-        - A scroll-stopping hook (first sentence).
-        - 3 to 4 sentences breaking down the developer's problem.
-        - How Zynd solves this exact problem as the ultimate infrastructure.
-        - A Call-To-Action (e.g., "Build on Zynd today" or "Link in bio").
-    Rule 3: Use proper line breaks (whitespace) to make it readable for LinkedIn. Do not use cringey marketing speak. Speak like a technical founder.
+    TASKS:
+    Write 2 long-form, 150-word social posts for LinkedIn/Twitter.
     
-    Format the output EXACTLY like this:
+    Post 1 (The Hijacker): Direct response to a live competitor update. Contrast their complexity or flaws with Zynd's streamlined OS.
+    Post 2 (The Solution): Address a top pain point from our database. Show exactly how Zynd infrastructure fixes it.
     
-    ### Post 1: The Pain-Point
-    [Full 150-word post goes here]
-    
-    ### Post 2: The Contrarian View
-    [Full 150-word post goes here]
-    
-    ### Post 3: The Value Drop
-    [Full 150-word post goes here]
+    RULES:
+    - Technical founder voice. 1st person plural ("We built...").
+    - Use line breaks for readability.
+    - Include a technical insight in every post to prove authority.
     """
 
     try:
@@ -56,23 +60,13 @@ def generate_daily_content(df_reddit, df_twitter):
             headers={
                 "Authorization": f"Bearer {st.secrets['openrouter']['api_key']}",
                 "HTTP-Referer": "https://zynd.io", 
-                "X-Title": "Zynd OS", 
                 "Content-Type": "application/json"
             },
             data=json.dumps({
                 "model": "openrouter/free", 
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ]
+                "messages": [{"role": "user", "content": prompt}]
             })
         )
-        
-        response_data = response.json()
-        
-        if response.status_code == 200:
-            return response_data['choices'][0]['message']['content']
-        else:
-            return f"API Error: {response_data.get('error', 'Unknown Error')}"
-            
+        return response.json()['choices'][0]['message']['content']
     except Exception as e:
         return f"System Error: {str(e)}"
