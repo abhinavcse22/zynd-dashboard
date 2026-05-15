@@ -535,7 +535,8 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Please enter the exact username of the lead you want to update.")
 
-st.write("---")
+
+    st.write("---")
     st.markdown("### 🎙️ The Zynd Media Empire")
     
     comp_tab, personal_tab = st.tabs(["🚀 Market Hijacker (Company)", "🧑‍💻 Build in Public (Team)"])
