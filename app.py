@@ -479,6 +479,62 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a search query first.")
 
+    st.write("")
+    st.markdown("### 🗄️ Team CRM & Pipeline Manager")
+    with st.container(border=True):
+        st.write("Assign leads, track outreach history, and manage the Do-Not-Contact list.")
+        
+        crm_col1, crm_col2 = st.columns(2)
+        
+        with crm_col1:
+            db_target = st.selectbox("Select Database to Update", ["Telegram Leads", "Reddit Leads", "Twitter Leads", "Fork Sniper Leads", "Influencer Leads"])
+            # In a real app, you'd dynamically load the lead list here like we did for the AI Drafter
+            lead_target = st.text_input("Lead Identifier (Exact Username or URL)")
+            
+        with crm_col2:
+            assignee = st.selectbox("Assign Lead Owner", ["Unassigned", "Abhinav", "Co-Founder", "Sales Rep 1"])
+            lead_status = st.selectbox("Update Status", [
+                "Not Contacted", 
+                "Message 1 Sent", 
+                "Follow-Up 1 Sent", 
+                "Replied - Interested", 
+                "Replied - Pass", 
+                "DO NOT CONTACT 🛑"
+            ])
+            follow_up = st.date_input("Next Follow-Up Date")
+            
+        if st.button("Update Lead Status 💾", type="primary", use_container_width=True):
+            if lead_target:
+                with st.spinner("Writing update to master database..."):
+                    import zynd_crm_engine
+                    
+                    # Map the UI selection to the actual Google Sheet Tab name and the index of the Username column
+                    # (Assuming Username is roughly column index 1 in most of your sheets)
+                    col_index_map = {
+                        "Telegram Leads": 1, 
+                        "Reddit Leads": 0, # Assuming Author is Col 0
+                        "Twitter Leads": 0,
+                        "Fork Sniper Leads": 0,
+                        "Influencer Leads": 1 # URL is Col 1
+                    }
+                    
+                    success, msg = zynd_crm_engine.update_lead_status(
+                        tab_name=db_target,
+                        search_column_index=col_index_map[db_target],
+                        lead_identifier=lead_target,
+                        owner=assignee,
+                        status=lead_status,
+                        follow_up_date=str(follow_up)
+                    )
+                    
+                    if success:
+                        st.success(msg)
+                        st.cache_data.clear() # Refresh data on dashboard
+                    else:
+                        st.error(f"Failed: {msg}")
+            else:
+                st.warning("Please enter the exact username of the lead you want to update.")
+
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
     row1_col1, row1_col2 = st.columns(2)
