@@ -455,6 +455,31 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a target repository format (owner/repo).")
 
+    st.write("---")
+    st.markdown("### 🏆 Deep OSINT: GitHub Contributor Finder")
+    with st.container(border=True):
+        st.write("Extract elite engineers who have successfully merged code into competitor repositories.")
+        
+        target_contrib_repo = st.text_input("Competitor Repository", placeholder="e.g., microsoft/autogen")
+        
+        if st.button("Extract Core Builders 🧬", type="primary", use_container_width=True):
+            if target_contrib_repo:
+                with st.spinner(f"Scanning {target_contrib_repo} for elite contributors..."):
+                    try:
+                        import zynd_contributor_finder
+                        leads, count = zynd_contributor_finder.hunt_contributors(target_contrib_repo)
+                        
+                        if count > 0:
+                            st.success(f"Heist Complete! Added {count} elite engineers to the database.")
+                            st.dataframe(leads, use_container_width=True)
+                            st.cache_data.clear()
+                        else:
+                            st.warning("No new contributors found (they may already be in your database).")
+                    except Exception as e:
+                        st.error(f"Extraction Error: {e}")
+            else:
+                st.warning("Enter a valid repository name.")
+
     st.write("")
     st.markdown("### 👻 The Telegram Ghost (Group Infiltrator)")
     with st.container(border=True):
