@@ -535,6 +535,21 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Please enter the exact username of the lead you want to update.")
 
+    st.write("")
+    st.markdown("### ✍️ Daily Content Idea Generator (Inbound Engine)")
+    with st.container(border=True):
+        st.write("Automatically generate high-converting social posts based on the exact pain points your scrapers found today.")
+        
+        if st.button("Generate Today's Content Ideas 💡", type="primary", use_container_width=True):
+            with st.spinner("AI is reading today's Reddit & Twitter data and writing posts..."):
+                import zynd_content_engine
+                
+                # Pass the dataframes we already loaded into memory at the top of app.py
+                ideas = zynd_content_engine.generate_daily_content(df_rd, df_tw)
+                
+                st.success("Inbound Content Generated!")
+                st.code(ideas, language="markdown")
+
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
     row1_col1, row1_col2 = st.columns(2)
