@@ -11,6 +11,8 @@ PyGithub
 telethon
 googlesearch-python
 google-api-python-client
+beautifulsoup4
+markdown
 google-generativeai
 git+https://github.com/mahrtayyab/tweety.git
 groq
