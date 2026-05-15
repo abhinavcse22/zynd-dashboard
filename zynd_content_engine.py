@@ -27,21 +27,27 @@ def generate_daily_content(df_reddit, df_twitter):
     Here are the actual pain points and conversations developers are having TODAY based on our raw scraper data:
     {context_str}
     
-    Generate 3 high-impact social media posts (for Twitter/LinkedIn) that Zynd should publish today to attract these specific developers.
+    Generate 3 FULL, ready-to-publish social media posts (for Twitter/LinkedIn) that Zynd should post today to attract these developers.
     
-    Rule 1: Do not be overly salesy. Focus on education and solving their specific problem.
-    Rule 2: Each post must have a strong hook (first sentence).
-    Rule 3: Frame Zynd as the ultimate solution or underlying infrastructure.
+    CRITICAL RULES:
+    Rule 1: WRITE THE FULL POST. Do not just give me titles or hooks. Each post MUST be 100-150 words long.
+    Rule 2: Each post must contain:
+        - A scroll-stopping hook (first sentence).
+        - 3 to 4 sentences breaking down the developer's problem.
+        - How Zynd solves this exact problem as the ultimate infrastructure.
+        - A Call-To-Action (e.g., "Build on Zynd today" or "Link in bio").
+    Rule 3: Use proper line breaks (whitespace) to make it readable for LinkedIn. Do not use cringey marketing speak. Speak like a technical founder.
     
-    Format the output exactly as:
-    Post 1 (The Pain-Point Hook):
-    [Content]
+    Format the output EXACTLY like this:
     
-    Post 2 (The Contrarian View):
-    [Content]
+    ### Post 1: The Pain-Point
+    [Full 150-word post goes here]
     
-    Post 3 (The Value Drop):
-    [Content]
+    ### Post 2: The Contrarian View
+    [Full 150-word post goes here]
+    
+    ### Post 3: The Value Drop
+    [Full 150-word post goes here]
     """
 
     try:
