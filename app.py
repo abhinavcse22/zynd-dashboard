@@ -749,6 +749,35 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a target GitHub directory repository.")
 
+    st.write("---")
+    st.markdown("### 🍕 The Hackathon Project Finder")
+    with st.container(border=True):
+        st.write("Rescue orphaned AI agent projects built over the weekend and invite them to deploy on Zynd OS.")
+        
+        hack_col1, hack_col2 = st.columns([3, 1])
+        with hack_col1:
+            hack_query = st.text_input("Search Query", value="hackathon AI agent")
+        with hack_col2:
+            num_projects = st.number_input("Projects to Scan", min_value=10, max_value=50, value=30)
+            
+        if st.button("Hunt Weekend Builders 🛠️", type="primary", use_container_width=True):
+            if hack_query:
+                with st.spinner("Scanning global GitHub indexing for recent hackathon projects..."):
+                    try:
+                        import zynd_hackathon_finder
+                        projects, count = zynd_hackathon_finder.hunt_hackathon_projects(hack_query, num_projects)
+                        
+                        if count > 0:
+                            st.success(f"Rescue Mission Complete! Found {count} new hackathon projects.")
+                            st.dataframe(projects, use_container_width=True)
+                            st.cache_data.clear()
+                        else:
+                            st.warning("No new hackathon projects found for this query right now.")
+                    except Exception as e:
+                        st.error(f"Search Error: {e}")
+            else:
+                st.warning("Enter a search query.")
+
     st.divider()
     st.subheader("🧹 Database Maintenance")
     if st.button("Clean Duplicates", type="primary"):
