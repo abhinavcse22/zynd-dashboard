@@ -535,21 +535,34 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Please enter the exact username of the lead you want to update.")
 
-    st.write("")
-    st.markdown("### ✍️ Daily Content Idea Generator (Inbound Engine)")
-    with st.container(border=True):
-        st.write("Automatically generate high-converting social posts based on the exact pain points your scrapers found today.")
-        
-        if st.button("Generate Today's Content Ideas 💡", type="primary", use_container_width=True):
-            with st.spinner("AI is reading today's Reddit & Twitter data and writing posts..."):
-                import zynd_content_engine
-                
-                # Pass the dataframes we already loaded into memory at the top of app.py
-                ideas = zynd_content_engine.generate_daily_content(df_rd, df_tw)
-                
-                st.success("Inbound Content Generated!")
-                st.code(ideas, language="markdown")
+st.write("---")
+    st.markdown("### 🎙️ The Zynd Media Empire")
+    
+    comp_tab, personal_tab = st.tabs(["🚀 Market Hijacker (Company)", "🧑‍💻 Build in Public (Team)"])
+    
+    with comp_tab:
+        targets = st.text_input("Competitors to Hijack", "LangChain, CrewAI, AutoGen")
+        if st.button("Generate Market-Informed Content 🌐"):
+            import zynd_content_engine
+            # Ensure df_rd and df_tw are passed for internal context
+            content = zynd_content_engine.generate_hybrid_content(df_rd, df_tw, [t.strip() for t in targets.split(',')])
+            st.code(content, language="markdown")
 
+    with personal_tab:
+        col1, col2 = st.columns(2)
+        with col1:
+            name = st.text_input("Member Name")
+            role = st.selectbox("Role", ["Engineer", "Product Ops", "Founder", "Community"])
+        with col2:
+            vibe = st.selectbox("Style", ["Hacker (Direct)", "Storyteller", "Visionary"])
+        
+        work = st.text_area("What did you solve today?")
+        if st.button("Draft Personal Post ✍️"):
+            import zynd_brand_engine
+            draft = zynd_brand_engine.generate_team_post(name, role, vibe, work)
+            st.code(draft, language="markdown")
+    
+    
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
     row1_col1, row1_col2 = st.columns(2)
