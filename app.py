@@ -627,7 +627,7 @@ elif menu == "⚙️ Control Room":
     st.write("---")
     st.markdown("### 🎙️ The Zynd Media Empire")
     
-    comp_tab, personal_tab = st.tabs(["🚀 Market Hijacker (Company)", "🧑‍💻 Build in Public (Team)", "⚙️ Auto Git-to-Social"])
+    comp_tab, personal_tab, git_tab = st.tabs(["🚀 Market Hijacker (Company)", "🧑‍💻 Build in Public (Team)", "⚙️ Auto Git-to-Social"])
     
     with comp_tab:
         targets = st.text_input("Competitors to Hijack", "LangChain, CrewAI, AutoGen")
