@@ -480,6 +480,40 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a valid repository name.")
 
+    st.write("---")
+    st.markdown("### 🥷 Deep OSINT: Omni-Channel Community Sniper")
+    with st.container(border=True):
+        st.write("Infiltrate closed Web3 and AI communities on Discord and Slack.")
+        
+        omni_platform = st.radio("Target Platform", ["Discord", "Slack"], horizontal=True)
+        
+        col_auth1, col_auth2 = st.columns(2)
+        with col_auth1:
+            auth_token = st.text_input(f"Your {omni_platform} Auth Token", type="password", help="Grab this from your browser network tab (F12) while logged in.")
+        with col_auth2:
+            if omni_platform == "Discord":
+                target_id = st.text_input("Discord Server ID", placeholder="e.g., 8301823901...")
+            else:
+                target_id = st.text_input("Slack Workspace URL (Not required for API)", disabled=True)
+                
+        if st.button(f"Infiltrate {omni_platform} 🎯", type="primary", use_container_width=True):
+            if auth_token:
+                with st.spinner(f"Bypassing {omni_platform} API walls..."):
+                    import zynd_omni_scraper
+                    if omni_platform == "Discord":
+                        leads, status = zynd_omni_scraper.scrape_discord_server(target_id, auth_token)
+                    else:
+                        leads, status = zynd_omni_scraper.scrape_slack_workspace(auth_token)
+                        
+                    if leads:
+                        st.success(f"Infiltration Complete! Extracted {len(leads)} active users.")
+                        st.dataframe(pd.DataFrame(leads, columns=["Username", "Source", "Name", "Bio/Title", "Date"]), use_container_width=True)
+                        # NOTE: Add gspread push logic here similar to previous scrapers
+                    else:
+                        st.error(status)
+            else:
+                st.warning("Auth token required.")
+
     st.write("")
     st.markdown("### 👻 The Telegram Ghost (Group Infiltrator)")
     with st.container(border=True):
@@ -593,7 +627,7 @@ elif menu == "⚙️ Control Room":
     st.write("---")
     st.markdown("### 🎙️ The Zynd Media Empire")
     
-    comp_tab, personal_tab = st.tabs(["🚀 Market Hijacker (Company)", "🧑‍💻 Build in Public (Team)"])
+    comp_tab, personal_tab = st.tabs(["🚀 Market Hijacker (Company)", "🧑‍💻 Build in Public (Team)", "⚙️ Auto Git-to-Social"])
     
     with comp_tab:
         targets = st.text_input("Competitors to Hijack", "LangChain, CrewAI, AutoGen")
@@ -616,6 +650,23 @@ elif menu == "⚙️ Control Room":
             import zynd_brand_engine
             draft = zynd_brand_engine.generate_team_post(name, role, vibe, work)
             st.code(draft, language="markdown")
+
+    with git_tab:
+        st.write("Automatically read your team's latest GitHub commits and generate launch posts.")
+        my_repo = st.text_input("Your Zynd Repository", placeholder="e.g., abhinav/zynd-os")
+        
+        if st.button("Read Latest Commit & Draft Post ⚡", type="primary", use_container_width=True):
+            if my_repo:
+                with st.spinner("Scanning GitHub and translating code to marketing..."):
+                    import zynd_git_social
+                    data, status = zynd_git_social.fetch_latest_commit_and_post(my_repo)
+                    
+                    if data:
+                        st.success(f"Latest push by {data['author']} intercepted!")
+                        st.info(f"**Raw Commit:** {data['message']}")
+                        st.code(data['post'], language="markdown")
+                    else:
+                        st.error(status)
     
     
     st.write("") 
