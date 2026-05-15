@@ -426,6 +426,35 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a target repository first.")
 
+    st.write("---")
+    st.markdown("### 🎯 Deep OSINT: GitHub Issue Sniper")
+    with st.container(border=True):
+        st.write("Hunt down high-intent developers actively complaining in competitor 'Issues' tabs.")
+        
+        sniper_col1, sniper_col2 = st.columns([3, 1])
+        with sniper_col1:
+            target_repo = st.text_input("Target Competitor Repo", placeholder="e.g., langchain-ai/langchain")
+        with sniper_col2:
+            issue_depth = st.number_input("Issues to Scan", min_value=10, max_value=100, value=20)
+            
+        if st.button("Snipe Active Complaints 🔫", type="primary", use_container_width=True):
+            if target_repo:
+                with st.spinner(f"Infiltrating {target_repo} issue boards..."):
+                    try:
+                        import zynd_issue_sniper
+                        leads, count = zynd_issue_sniper.snipe_repo_issues(target_repo, issue_depth)
+                        
+                        if count > 0:
+                            st.success(f"Target Acquired: Extracted {count} high-intent complainers to your database.")
+                            st.dataframe(leads, use_container_width=True)
+                            st.cache_data.clear() # Refresh internal memory
+                        else:
+                            st.warning("No new leads found. Try scanning deeper or a different repo.")
+                    except Exception as e:
+                        st.error(f"Extraction Error: {e}")
+            else:
+                st.warning("Enter a target repository format (owner/repo).")
+
     st.write("")
     st.markdown("### 👻 The Telegram Ghost (Group Infiltrator)")
     with st.container(border=True):
