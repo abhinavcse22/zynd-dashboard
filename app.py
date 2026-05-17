@@ -837,6 +837,32 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Please enter both the post URL and the competitor name.")
 
+    st.write("---")
+    st.markdown("### 🧩 Deep OSINT: No-Code Automation Finder")
+    with st.container(border=True):
+        st.write("Extract Zapier, Make, and n8n power-users who are hitting scaling walls and need AI agents.")
+        
+        nocode_col1, nocode_col2 = st.columns([3, 1])
+        with nocode_col1:
+            nocode_platform = st.selectbox("Target Platform to Poach From", ["Zapier", "Make (Integromat)", "n8n", "Pipedream"])
+        with nocode_col2:
+            nocode_count = st.number_input("Leads to Extract", min_value=10, max_value=100, value=25)
+            
+        if st.button("Hunt Automation Builders 🕸️", type="primary", use_container_width=True):
+            with st.spinner(f"Scanning Twitter and Reddit for {nocode_platform} complaints..."):
+                try:
+                    import zynd_nocode_finder
+                    nocode_leads, count = zynd_nocode_finder.find_nocode_builders(nocode_platform, nocode_count)
+                    
+                    if count > 0:
+                        st.success(f"Poaching Complete! Extracted {count} {nocode_platform} power-users.")
+                        st.dataframe(nocode_leads, use_container_width=True)
+                        st.cache_data.clear()
+                    else:
+                        st.warning("No new leads found.")
+                except Exception as e:
+                    st.error(f"Extraction Error: {e}")
+
     st.divider()
     st.subheader("🧹 Database Maintenance")
     if st.button("Clean Duplicates", type="primary"):
