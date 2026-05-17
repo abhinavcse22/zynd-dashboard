@@ -6,58 +6,84 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
-# RAPID_API_KEY = st.secrets.get("rapidapi", {}).get("key", "")
 
 def steal_twitter_followers(target_handle, max_followers=50):
-    """Extracts the follower list of a competitor's Twitter account."""
+    """Hits the live RapidAPI endpoint to extract real Twitter followers."""
     
-    # Growth Hacker Note: To make this live, you would plug in a RapidAPI Twitter endpoint here.
-    # We are simulating the successful data extraction structure for your pipeline.
-    url = f"https://twitter-api45.p.rapidapi.com/followers.php?screenname={target_handle}"
+    # Ensure the user didn't accidentally include the @ symbol
+    clean_handle = target_handle.replace("@", "").strip()
     
+    url = f"https://twitter-api45.p.rapidapi.com/followers.php?screenname={clean_handle}"
+    
+    # Pulls the real API key from your Streamlit secrets
+    api_key = st.secrets.get("rapidapi", {}).get("key", "")
+    if not api_key:
+        raise Exception("RapidAPI Key is missing in Streamlit Secrets. Cannot fetch real data.")
+
     headers = {
-        "X-RapidAPI-Key": st.secrets.get("rapidapi", {}).get("key", "demo_key"),
+        "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": "twitter-api45.p.rapidapi.com"
     }
     
+    response = requests.get(url, headers=headers)
+    
+    if response.status_code != 200:
+        raise Exception(f"Live API Error: {response.status_code} - {response.text}")
+
+    data = response.json()
+    
+    # RapidAPI Twitter45 usually returns a dictionary with an "instructions" or "timeline" list.
+    # Depending on the exact scraper version, we extract the user data:
+    
+    # Fallback to empty list if structure changes
+    users = [] 
+    
+    # Parsing the real Twitter JSON payload
     try:
-        # response = requests.get(url, headers=headers)
-        # data = response.json()
-        
-        # SIMULATED RESPONSE ARCHITECTURE (Replace with real API response mapping)
-        # Assuming the API returns a list of user objects
-        extracted_leads = []
-        today = datetime.now().strftime('%Y-%m-%d')
-        
-        # Mocking the loop for the pipeline
-        for i in range(max_followers):
-            extracted_leads.append([
-                f"@dev_follower_{i}",          # Username
-                f"Web3/AI Builder {i}",        # Name
-                "Building AI agents. Interested in OSS.", # Bio
-                f"@{target_handle}",           # Target
-                str(100 + i * 10),             # Follower count
-                today                          # Date
-            ])
-            
-        if not extracted_leads:
-            return [], 0
+        # Most Twitter scrapers return a list of user objects
+        if isinstance(data, list):
+            users = data
+        elif 'users' in data:
+            users = data['users']
+        else:
+             users = data.get('timeline', []) # Backup parsing
+    except Exception:
+        raise Exception("Could not parse the live Twitter data. The API structure may have changed.")
 
-        # Push to Google Sheets
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
-        gclient = gspread.authorize(creds)
-        sheet = gclient.open_by_key(SHEET_ID).worksheet("Stolen Followers")
+    if not users:
+        return [], 0
 
-        # Deduplicate based on Username (Column 1)
-        existing_usernames = set(sheet.col_values(1)[1:]) if len(sheet.get_all_values()) > 1 else set()
-        new_rows = [row for row in extracted_leads if row[0] not in existing_usernames]
+    extracted_leads = []
+    today = datetime.now().strftime('%Y-%m-%d')
+    
+    for user in users[:max_followers]:
+        # Handle different potential JSON key names from the scraper
+        username = user.get('screen_name', user.get('username', 'Unknown'))
+        name = user.get('name', 'Unknown')
+        bio = user.get('description', user.get('bio', 'No bio provided'))
+        followers = str(user.get('followers_count', 0))
         
-        if new_rows:
-            sheet.append_rows(new_rows)
+        extracted_leads.append([
+            f"@{username}",
+            name,
+            bio,
+            f"@{clean_handle}",
+            followers,
+            today
+        ])
 
-        display_data = [{"Handle": r[0], "Bio": str(r[2])[:50]+"...", "Target": r[3]} for r in new_rows]
-        return display_data, len(new_rows)
-        
-    except Exception as e:
-        raise Exception(f"API Connection Error: {str(e)}")
+    # Push to Google Sheets
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    gclient = gspread.authorize(creds)
+    sheet = gclient.open_by_key(SHEET_ID).worksheet("Stolen Followers")
+
+    # Deduplicate based on Username (Column 1)
+    existing_usernames = set(sheet.col_values(1)[1:]) if len(sheet.get_all_values()) > 1 else set()
+    new_rows = [row for row in extracted_leads if row[0] not in existing_usernames]
+    
+    if new_rows:
+        sheet.append_rows(new_rows)
+
+    display_data = [{"Handle": r[0], "Bio": str(r[2])[:60]+"...", "Target": r[3]} for r in new_rows]
+    return display_data, len(new_rows)
