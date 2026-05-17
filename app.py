@@ -808,6 +808,35 @@ elif menu == "⚙️ Control Room":
             else:
                 st.warning("Enter a target competitor handle.")
 
+    st.write("---")
+    st.markdown("### 💬 Deep OSINT: Recent Post Engager Scraper")
+    with st.container(border=True):
+        st.write("Scrape highly active developers who are currently liking and commenting on competitor posts.")
+        
+        engager_col1, engager_col2 = st.columns([3, 1])
+        with engager_col1:
+            target_post_url = st.text_input("Target Post URL (Twitter/LinkedIn)", placeholder="https://twitter.com/LangChainAI/status/...")
+        with engager_col2:
+            target_comp_name = st.text_input("Competitor Name", placeholder="LangChain")
+            
+        if st.button("Extract Active Engagers ⚡", type="primary", use_container_width=True):
+            if target_post_url and target_comp_name:
+                with st.spinner("Scraping post engagements..."):
+                    try:
+                        import zynd_engager_scraper
+                        engagers, count = zynd_engager_scraper.scrape_post_engagers(target_post_url, target_comp_name, 25)
+                        
+                        if count > 0:
+                            st.success(f"Extracted {count} hyper-active leads from the post.")
+                            st.dataframe(engagers, use_container_width=True)
+                            st.cache_data.clear()
+                        else:
+                            st.warning("No new engagers found. They may already be in your database.")
+                    except Exception as e:
+                        st.error(f"Extraction Error: {e}")
+            else:
+                st.warning("Please enter both the post URL and the competitor name.")
+
     st.divider()
     st.subheader("🧹 Database Maintenance")
     if st.button("Clean Duplicates", type="primary"):
