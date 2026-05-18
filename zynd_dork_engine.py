@@ -33,16 +33,18 @@ def run_zero_cost_extraction(target_competitor, platform, mission_type, max_resu
             target_url = result.url
             context = result.description
             
-            # Basic filtering to avoid standard company pages
-            # Basic filtering to avoid standard company pages
-            if "status" in target_url or "/in/" in target_url or target_competitor.lower() not in target_url:
-                extracted_leads.append([
-                    target_url,
-                    context,
-                    platform,
-                    query,
-                    today
-                ])
+            # Smarter filtering: Google's Dork query already does the heavy lifting.
+            # We just want to avoid pulling individual tweets when hunting for profiles.
+            if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)" and "/status/" in target_url:
+                continue # Skip individual tweets, keep only the profile URL
+                
+            extracted_leads.append([
+                target_url,
+                context, # This holds their bio/snippet!
+                platform,
+                query,
+                today
+            ])
             
             # Anti-bot delay so Google doesn't block Streamlit
             time.sleep(random.uniform(1.0, 2.5))
