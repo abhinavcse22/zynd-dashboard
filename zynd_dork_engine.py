@@ -4,14 +4,13 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from duckduckgo_search import DDGS
-import time
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def run_zero_cost_extraction(target_competitor, platform, mission_type, max_results=20):
-    """Uses DuckDuckGo Dorking to bypass Google's datacenter IP bans."""
+    """Uses DuckDuckGo Dorking with an automatic Fallback Net for niche competitors."""
     
-    # Construct the Advanced Search Query (Simplified for maximum hits)
+    # 1. The Strict, High-Intent Query
     if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)":
         query = f'site:{platform} "{target_competitor}" developer OR builder OR AI'
     elif mission_type == "Complaint Scraper (Replaces No-Code Finder)":
@@ -19,18 +18,25 @@ def run_zero_cost_extraction(target_competitor, platform, mission_type, max_resu
     else:
         query = f'site:{platform} "{target_competitor}"'
 
+    # 2. The Broad Fallback Query (If the competitor is too small for the strict query)
+    broad_query = f'site:{platform} "{target_competitor}"'
+
     extracted_leads = []
     today = datetime.now().strftime('%Y-%m-%d')
     
     try:
-        # DDGS (DuckDuckGo Search) is highly resilient on Streamlit Cloud
-        results = DDGS().text(query, max_results=max_results)
+        # First, cast the strict net
+        results = list(DDGS().text(query, max_results=max_results))
         
+        # If strict fails (returns 0), cast the massive wide net instantly
+        if not results and query != broad_query:
+            results = list(DDGS().text(broad_query, max_results=max_results))
+            
         for result in results:
             target_url = result.get('href', '')
             context = result.get('body', '')
             
-            # Filter out status updates if we just want profiles
+            # Skip individual tweets only if we are specifically hunting profiles
             if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)" and "/status/" in target_url:
                 continue
                 
@@ -38,7 +44,7 @@ def run_zero_cost_extraction(target_competitor, platform, mission_type, max_resu
                 target_url,
                 context,
                 platform,
-                query,
+                "Fallback Broad Search" if not results else query, # Logs which net caught them
                 today
             ])
             
@@ -46,7 +52,7 @@ def run_zero_cost_extraction(target_competitor, platform, mission_type, max_resu
         return [], f"Search Engine Error: {e}"
 
     if not extracted_leads:
-        return [], "No leads found. The platform might not have indexed this specific query recently."
+        return [], f"Zero leads found. Nobody on {platform} is currently indexed talking about '{target_competitor}'."
 
     # Push to Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
