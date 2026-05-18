@@ -863,6 +863,40 @@ elif menu == "⚙️ Control Room":
                 except Exception as e:
                     st.error(f"Extraction Error: {e}")
 
+    st.write("---")
+    st.markdown("### 🏴‍☠️ Zero-Cost Deep OSINT (Google Dorking)")
+    with st.container(border=True):
+        st.write("Bypass API firewalls by scraping Google's index of Twitter and LinkedIn. 100% free.")
+        
+        dork_col1, dork_col2 = st.columns(2)
+        with dork_col1:
+            dork_mission = st.selectbox("Extraction Mission", [
+                "Bio/Profile Scraper (Replaces Follower Stealer)",
+                "Complaint Scraper (Replaces No-Code Finder)"
+            ])
+            dork_target = st.text_input("Target Competitor / Tool", placeholder="LangChain or Zapier")
+            
+        with dork_col2:
+            dork_platform = st.selectbox("Target Platform", ["twitter.com", "linkedin.com/in", "reddit.com"])
+            dork_count = st.slider("Leads to Extract (Keep under 30 to prevent Google bans)", 5, 50, 15)
+            
+        if st.button("Execute Zero-Cost Heist 🕵️‍♂️", type="primary", use_container_width=True):
+            if dork_target:
+                with st.spinner(f"Dorking {dork_platform} for {dork_target} leads... (This takes 30-60 seconds to avoid bot detection)"):
+                    import zynd_dork_engine
+                    results, count = zynd_dork_engine.run_zero_cost_extraction(dork_target, dork_platform, dork_mission, dork_count)
+                    
+                    if isinstance(count, int) and count > 0:
+                        st.success(f"Heist Complete! Indexed {count} high-intent profiles.")
+                        st.dataframe(results, use_container_width=True)
+                        st.cache_data.clear()
+                    elif isinstance(count, int) and count == 0:
+                        st.warning("No new unique leads found for this specific query.")
+                    else:
+                        st.error(count) # Displays the rate limit error
+            else:
+                st.warning("Enter a target competitor.")
+
     st.divider()
     st.subheader("🧹 Database Maintenance")
     if st.button("Clean Duplicates", type="primary"):
