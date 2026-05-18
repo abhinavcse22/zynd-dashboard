@@ -3,65 +3,57 @@ from datetime import datetime
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from googlesearch import search
+from duckduckgo_search import DDGS
 import time
-import random
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def run_zero_cost_extraction(target_competitor, platform, mission_type, max_results=20):
-    """Uses Google Dorking to extract leads without paying for APIs."""
+    """Uses DuckDuckGo Dorking to bypass Google's datacenter IP bans."""
     
-    # 1. Construct the Advanced Search Query
+    # Construct the Advanced Search Query (Simplified for maximum hits)
     if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)":
-        # Finds LinkedIn/Twitter profiles that explicitly mention the competitor in their bio
-        query = f'site:{platform} "{target_competitor}" (AI OR Agent OR Developer OR Engineer)'
+        query = f'site:{platform} "{target_competitor}" developer OR builder OR AI'
     elif mission_type == "Complaint Scraper (Replaces No-Code Finder)":
-        # Finds public tweets/posts complaining about a tool's limits or pricing
-        query = f'site:{platform} ("{target_competitor} is too expensive" OR "{target_competitor} limits" OR "alternative to {target_competitor}")'
+        query = f'site:{platform} "{target_competitor}" expensive OR limits OR alternative'
     else:
-        # General mention scraper
         query = f'site:{platform} "{target_competitor}"'
 
     extracted_leads = []
     today = datetime.now().strftime('%Y-%m-%d')
     
     try:
-        # advanced=True pulls the title and description snippet directly from Google's index
-        for result in search(query, num_results=max_results, advanced=True):
-            # Clean up the URLs to just show the target
-            target_url = result.url
-            context = result.description
+        # DDGS (DuckDuckGo Search) is highly resilient on Streamlit Cloud
+        results = DDGS().text(query, max_results=max_results)
+        
+        for result in results:
+            target_url = result.get('href', '')
+            context = result.get('body', '')
             
-            # Smarter filtering: Google's Dork query already does the heavy lifting.
-            # We just want to avoid pulling individual tweets when hunting for profiles.
+            # Filter out status updates if we just want profiles
             if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)" and "/status/" in target_url:
-                continue # Skip individual tweets, keep only the profile URL
+                continue
                 
             extracted_leads.append([
                 target_url,
-                context, # This holds their bio/snippet!
+                context,
                 platform,
                 query,
                 today
             ])
             
-            # Anti-bot delay so Google doesn't block Streamlit
-            time.sleep(random.uniform(1.0, 2.5))
-            
     except Exception as e:
-        return [], f"Google blocked the request (Rate Limit). Try again in 10 minutes. Error: {e}"
+        return [], f"Search Engine Error: {e}"
 
     if not extracted_leads:
-        return [], "No specific leads found for this query."
+        return [], "No leads found. The platform might not have indexed this specific query recently."
 
-    # 2. Push to Google Sheets Pipeline
+    # Push to Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     gclient = gspread.authorize(creds)
     sheet = gclient.open_by_key(SHEET_ID).worksheet("Dorking Leads")
 
-    # Deduplicate based on URL (Column 1)
     existing_urls = set(sheet.col_values(1)[1:]) if len(sheet.get_all_values()) > 1 else set()
     new_rows = [row for row in extracted_leads if row[0] not in existing_urls]
     
