@@ -34,6 +34,7 @@ def run_zero_cost_extraction(target_competitor, platform, mission_type, max_resu
             context = result.description
             
             # Basic filtering to avoid standard company pages
+            # Basic filtering to avoid standard company pages
             if "status" in target_url or "/in/" in target_url or target_competitor.lower() not in target_url:
                 extracted_leads.append([
                     target_url,
