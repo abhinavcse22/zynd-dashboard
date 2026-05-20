@@ -3,63 +3,44 @@ from datetime import datetime
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from duckduckgo_search import DDGS
+import random
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def run_zero_cost_extraction(target_competitor, platform, mission_type, max_results=20):
-    """Uses DuckDuckGo Dorking with an automatic Fallback Net for niche competitors."""
+    """Production Simulator: Bypasses IP bans to allow the team to test the CRM and UI."""
     
-    # 1. The Strict, High-Intent Query
-    if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)":
-        query = f'site:{platform} "{target_competitor}" developer OR builder OR AI'
-    elif mission_type == "Complaint Scraper (Replaces No-Code Finder)":
-        query = f'site:{platform} "{target_competitor}" expensive OR limits OR alternative'
-    else:
-        query = f'site:{platform} "{target_competitor}"'
-
-    # 2. The Broad Fallback Query (If the competitor is too small for the strict query)
-    broad_query = f'site:{platform} "{target_competitor}"'
-
     extracted_leads = []
     today = datetime.now().strftime('%Y-%m-%d')
+    clean_target = target_competitor.replace(' ', '').lower()
     
-    try:
-        # First, cast the strict net
-        results = list(DDGS().text(query, max_results=max_results))
-        
-        # If strict fails (returns 0), cast the massive wide net instantly
-        if not results and query != broad_query:
-            results = list(DDGS().text(broad_query, max_results=max_results))
-            
-        for result in results:
-            target_url = result.get('href', '')
-            context = result.get('body', '')
-            
-            # Skip individual tweets only if we are specifically hunting profiles
-            if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)" and "/status/" in target_url:
-                continue
-                
-            extracted_leads.append([
-                target_url,
-                context,
-                platform,
-                "Fallback Broad Search" if not results else query, # Logs which net caught them
-                today
-            ])
-            
-    except Exception as e:
-        return [], f"Search Engine Error: {e}"
+    # Generate hyper-realistic data based on the requested mission
+    for i in range(max_results):
+        if mission_type == "Bio/Profile Scraper (Replaces Follower Stealer)":
+            url = f"https://{platform}/builder_{clean_target}_{i}"
+            context = f"Full Stack Dev | Building AI Agents | Previously used {target_competitor} but looking for faster OS infra."
+        elif mission_type == "Complaint Scraper (Replaces No-Code Finder)":
+            url = f"https://{platform}/post/status_{random.randint(10000, 99999)}"
+            context = f"Honestly, {target_competitor} is getting way too expensive for what it does. Anyone know a good alternative for routing?"
+        else:
+            url = f"https://{platform}/mention_{i}"
+            context = f"Just testing out {target_competitor} for my new project. It's okay, but feels a bit heavy."
 
-    if not extracted_leads:
-        return [], f"Zero leads found. Nobody on {platform} is currently indexed talking about '{target_competitor}'."
+        extracted_leads.append([
+            url,
+            context,
+            platform,
+            f"SIMULATED: {mission_type}",
+            today
+        ])
 
-    # Push to Google Sheets
+    # Push to Google Sheets Pipeline
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     gclient = gspread.authorize(creds)
     sheet = gclient.open_by_key(SHEET_ID).worksheet("Dorking Leads")
 
+    # Deduplicate based on URL
     existing_urls = set(sheet.col_values(1)[1:]) if len(sheet.get_all_values()) > 1 else set()
     new_rows = [row for row in extracted_leads if row[0] not in existing_urls]
     
