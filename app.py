@@ -75,7 +75,7 @@ def load_full_database():
     except: tw = pd.DataFrame()
     try: star = pd.read_csv(get_url("github_stargazer_leads"))
     except: star = pd.DataFrame()
-    try: fork = pd.read_csv(get_url("Fork Sniper Leads")) # <--- NEW: Telling the app to read the new tab
+    try: fork = pd.read_csv(get_url("Fork Sniper Leads"))
     except: fork = pd.DataFrame()
     
     return gh, rd, tw, star, fork
@@ -122,7 +122,14 @@ with st.sidebar:
     st.title("Zynd OS")
     st.caption("v2.0 | Secured Workspace")
     st.markdown("---")
-    menu = st.radio("Navigation", ["📈 Pipeline Overview", "💻 GitHub Builders", "💬 Reddit Intent", "🐦 Twitter Sniper", "⚙️ Control Room"])
+    menu = st.radio("Navigation", [
+        "📈 Campaign Dashboard",
+        "📈 Pipeline Overview", 
+        "💻 GitHub Builders", 
+        "💬 Reddit Intent", 
+        "🐦 Twitter Sniper", 
+        "⚙️ Control Room"
+    ])
     st.markdown("---")
     st.info(f"🟢 **System Online**\n\nLast Sync: {pd.Timestamp.now().strftime('%H:%M')}")
     if st.button("🚪 Log Out", type="secondary"):
@@ -130,9 +137,66 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
+# 📈 TAB: CAMPAIGN DASHBOARD
+# ==========================================
+if menu == "📈 Campaign Dashboard":
+    st.markdown("## 📈 Campaign Performance Dashboard")
+    st.write("Real-time telemetry on your outbound Go-To-Market machine.")
+    
+    with st.spinner("Compiling GTM Telemetry..."):
+        try:
+            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+            gclient = gspread.authorize(creds)
+            sheet = gclient.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A')
+            
+            # This requires a "Master CRM" tab in your Google Sheet with "Status" and "Source" columns
+            crm_data = pd.DataFrame(sheet.worksheet("Master CRM").get_all_records())
+            
+            if not crm_data.empty:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Total Leads Extracted", len(crm_data))
+                with col2:
+                    contacted = len(crm_data[crm_data['Status'] != 'Not Contacted'])
+                    st.metric("Leads Engaged", contacted)
+                with col3:
+                    conversion_rate = round((contacted / len(crm_data)) * 100, 1) if len(crm_data) > 0 else 0
+                    st.metric("Engagement Rate", f"{conversion_rate}%")
+                
+                st.write("---")
+                chart_col1, chart_col2 = st.columns(2)
+                
+                with chart_col1:
+                    st.markdown("#### Leads by Source")
+                    if 'Source' in crm_data.columns:
+                        source_counts = crm_data['Source'].value_counts().reset_index()
+                        source_counts.columns = ['Source', 'Count']
+                        fig_source = px.pie(source_counts, values='Count', names='Source', hole=0.4)
+                        st.plotly_chart(fig_source, use_container_width=True)
+                    else:
+                        st.warning("Column 'Source' not found in Master CRM.")
+                    
+                with chart_col2:
+                    st.markdown("#### Pipeline Status")
+                    if 'Status' in crm_data.columns:
+                        status_counts = crm_data['Status'].value_counts().reset_index()
+                        status_counts.columns = ['Status', 'Count']
+                        fig_status = px.bar(status_counts, x='Status', y='Count', color='Status')
+                        st.plotly_chart(fig_status, use_container_width=True)
+                    else:
+                        st.warning("Column 'Status' not found in Master CRM.")
+            else:
+                st.info("Your CRM is currently empty. Go to the Control Room and extract some leads!")
+                
+        except Exception as e:
+            st.error(f"Error loading dashboard data. Ensure you have a 'Master CRM' tab in your Google Sheet. Error Details: {e}")
+
+# ==========================================
 # 📈 TAB: PIPELINE OVERVIEW
 # ==========================================
-if menu == "📈 Pipeline Overview":
+elif menu == "📈 Pipeline Overview":
     st.header("Executive GTM Summary")
     m1, m2, m3, m4 = st.columns(4)
     total_leads = len(df_gh) + len(df_rd) + len(df_tw) + len(df_star) + len(df_fork)
@@ -143,7 +207,6 @@ if menu == "📈 Pipeline Overview":
 
     st.divider()
     
-    # --- SAAS FEATURE: ACTION CENTER ---
     st.subheader("⚡ Action Center (Next Best Actions)")
     action_col1, action_col2 = st.columns(2)
     with action_col1:
@@ -169,7 +232,6 @@ if menu == "📈 Pipeline Overview":
 # 💻 TAB: GITHUB BUILDERS
 # ==========================================
 elif menu == "💻 GitHub Builders":
-    # --- NEW: Added a 3rd tab specifically for the Fork Sniper Leads ---
     gh_tab1, gh_tab2, gh_tab3 = st.tabs(["🔭 Stargazer Radar (Intent Leads)", "🎯 Fork Sniped Leads", "🗄️ Standard Builder DB"])
     
     with gh_tab1:
@@ -211,7 +273,6 @@ elif menu == "💻 GitHub Builders":
             
             st.download_button(label="📥 Export Filtered Leads to CSV", data=filtered_star.to_csv(index=False).encode('utf-8'), file_name='zynd_stargazer_leads.csv', mime='text/csv', type="primary")
 
-    # --- NEW UI FOR THE FORK LEADS ---
     with gh_tab2:
         st.header("🎯 High-Intent Fork Builders")
         st.write("Developers who actively copied competitor repositories to build their own projects.")
@@ -248,7 +309,6 @@ elif menu == "💬 Reddit Intent":
     st.metric("Total Reddit Leads", len(df_rd))
     st.data_editor(df_rd, use_container_width=True, height=400, num_rows="dynamic")
     
-    # SAAS FEATURE: CSV EXPORT
     if not df_rd.empty:
         st.download_button(label="📥 Export Reddit Leads to CSV", data=df_rd.to_csv(index=False).encode('utf-8'), file_name='zynd_reddit_leads.csv', mime='text/csv')
 
@@ -260,7 +320,6 @@ elif menu == "🐦 Twitter Sniper":
     st.metric("Total Twitter Leads", len(df_tw))
     st.data_editor(df_tw, use_container_width=True, height=400, num_rows="dynamic")
     
-    # SAAS FEATURE: CSV EXPORT
     if not df_tw.empty:
         st.download_button(label="📥 Export Twitter Leads to CSV", data=df_tw.to_csv(index=False).encode('utf-8'), file_name='zynd_twitter_leads.csv', mime='text/csv')
     
@@ -327,7 +386,6 @@ elif menu == "⚙️ Control Room":
     with st.container(border=True):
         st.write("Instantly generate hyper-personalized outreach sequences for any lead using OpenRouter.")
         
-        # Toggle between Database or Manual
         input_mode = st.radio("Lead Selection Method:", ["🗄️ Select from Database", "✍️ Manual Entry"], horizontal=True)
         
         lead_n, lead_intent, lead_context = "", "", ""
@@ -348,7 +406,6 @@ elif menu == "⚙️ Control Room":
                         lead_context = str(row.get('Bio', 'GitHub Builder'))
                         
                 elif db_choice == "Reddit Leads" and not df_rd.empty:
-                    # Dynamically find the user column
                     user_col = 'Author' if 'Author' in df_rd.columns else ('Username' if 'Username' in df_rd.columns else df_rd.columns[0])
                     lead_list = df_rd[user_col].dropna().astype(str).tolist()
                     selected_lead = st.selectbox("Select Prospect", lead_list)
@@ -374,20 +431,18 @@ elif menu == "⚙️ Control Room":
                     selected_lead = st.selectbox("Select Prospect", lead_list)
                     if selected_lead:
                         row = df_star[df_star[url_col] == selected_lead].iloc[0]
-                        lead_n = str(row[url_col]).split('/')[-1] # Extract username from URL
+                        lead_n = str(row[url_col]).split('/')[-1]
                         lead_intent = f"Starred {row.get('source_repo', 'Competitor Repo')}"
                         lead_context = f"Matched keywords: {row.get('matched_keywords', 'AI, Agent, Web3')}"
                 else:
                     st.warning("No data found in this database yet.")
 
-            # Show the user what data is being sent to the AI
             if lead_n:
                 st.info(f"**Target:** {lead_n} | **Intent:** {lead_intent}")
                 with st.expander("View Internal Context Data"):
                     st.write(lead_context)
 
         else:
-            # The Manual Entry Mode
             draft_col1, draft_col2 = st.columns(2)
             with draft_col1:
                 lead_n = st.text_input("Lead Name / Handle", placeholder="e.g., @AgentBuilder99")
@@ -418,7 +473,6 @@ elif menu == "⚙️ Control Room":
                     try:
                         leads_data, saved_count = zynd_github_sniper.run_fork_sniper(target_fork)
                         st.success(f"Extraction complete! Saved {saved_count} new high-intent builders directly to the database.")
-                        # Clear cache so the new tab updates instantly
                         st.cache_data.clear()
                         st.dataframe(leads_data)
                     except Exception as e:
@@ -447,7 +501,7 @@ elif menu == "⚙️ Control Room":
                         if count > 0:
                             st.success(f"Target Acquired: Extracted {count} high-intent complainers to your database.")
                             st.dataframe(leads, use_container_width=True)
-                            st.cache_data.clear() # Refresh internal memory
+                            st.cache_data.clear()
                         else:
                             st.warning("No new leads found. Try scanning deeper or a different repo.")
                     except Exception as e:
@@ -508,7 +562,6 @@ elif menu == "⚙️ Control Room":
                     if leads:
                         st.success(f"Infiltration Complete! Extracted {len(leads)} active users.")
                         st.dataframe(pd.DataFrame(leads, columns=["Username", "Source", "Name", "Bio/Title", "Date"]), use_container_width=True)
-                        # NOTE: Add gspread push logic here similar to previous scrapers
                     else:
                         st.error(status)
             else:
@@ -534,7 +587,7 @@ elif menu == "⚙️ Control Room":
                         st.success(f"Heist Complete! Extracted and saved {saved_count} new targeted leads to the database.")
                         if tg_leads:
                             st.dataframe(tg_leads, use_container_width=True)
-                        st.cache_data.clear() # Refresh app data
+                        st.cache_data.clear()
                     except Exception as e:
                         st.error(f"Infiltration Error: {e}")
             else:
@@ -576,7 +629,6 @@ elif menu == "⚙️ Control Room":
         
         with crm_col1:
             db_target = st.selectbox("Select Database to Update", ["Telegram Leads", "Reddit Leads", "Twitter Leads", "Fork Sniper Leads", "Influencer Leads"])
-            # In a real app, you'd dynamically load the lead list here like we did for the AI Drafter
             lead_target = st.text_input("Lead Identifier (Exact Username or URL)")
             
         with crm_col2:
@@ -596,14 +648,12 @@ elif menu == "⚙️ Control Room":
                 with st.spinner("Writing update to master database..."):
                     import zynd_crm_engine
                     
-                    # Map the UI selection to the actual Google Sheet Tab name and the index of the Username column
-                    # (Assuming Username is roughly column index 1 in most of your sheets)
                     col_index_map = {
                         "Telegram Leads": 1, 
-                        "Reddit Leads": 0, # Assuming Author is Col 0
+                        "Reddit Leads": 0,
                         "Twitter Leads": 0,
                         "Fork Sniper Leads": 0,
-                        "Influencer Leads": 1 # URL is Col 1
+                        "Influencer Leads": 1
                     }
                     
                     success, msg = zynd_crm_engine.update_lead_status(
@@ -617,7 +667,7 @@ elif menu == "⚙️ Control Room":
                     
                     if success:
                         st.success(msg)
-                        st.cache_data.clear() # Refresh data on dashboard
+                        st.cache_data.clear()
                     else:
                         st.error(f"Failed: {msg}")
             else:
@@ -633,7 +683,6 @@ elif menu == "⚙️ Control Room":
         targets = st.text_input("Competitors to Hijack", "LangChain, CrewAI, AutoGen")
         if st.button("Generate Market-Informed Content 🌐"):
             import zynd_content_engine
-            # Ensure df_rd and df_tw are passed for internal context
             content = zynd_content_engine.generate_hybrid_content(df_rd, df_tw, [t.strip() for t in targets.split(',')])
             st.code(content, language="markdown")
 
@@ -667,7 +716,6 @@ elif menu == "⚙️ Control Room":
                         st.code(data['post'], language="markdown")
                     else:
                         st.error(status)
-    
     
     st.write("") 
     st.markdown("### ⚙️ Standard Harvesters")
@@ -743,7 +791,7 @@ elif menu == "⚙️ Control Room":
                         elif isinstance(projects, list) and len(projects) == 0:
                             st.warning("Scan complete, but no new projects were found (they may already be in your DB).")
                         else:
-                            st.error(status) # Prints the error string
+                            st.error(status)
                     except Exception as e:
                         st.error(f"Scanner Error: {e}")
             else:
@@ -779,94 +827,9 @@ elif menu == "⚙️ Control Room":
                 st.warning("Enter a search query.")
 
     st.write("---")
-    st.markdown("### 🥷 Deep OSINT: Competitor Follower Stealer")
+    st.markdown("### 🏴‍☠️ Zero-Cost Deep OSINT (Simulation Pipeline)")
     with st.container(border=True):
-        st.write("Download lists of developers who follow your direct competitors on Twitter/X.")
-        
-        steal_col1, steal_col2 = st.columns([3, 1])
-        with steal_col1:
-            comp_handle = st.text_input("Competitor Twitter Handle (No @)", placeholder="LangChainAI")
-        with steal_col2:
-            steal_count = st.number_input("Followers to Extract", min_value=10, max_value=500, value=50)
-            
-        if st.button("Initiate Follower Heist 🏴‍☠️", type="primary", use_container_width=True):
-            if comp_handle:
-                with st.spinner(f"Bypassing limits to extract @{comp_handle}'s follower network..."):
-                    try:
-                        import zynd_follower_stealer
-                        # Reminder: You'll need a RapidAPI key in secrets for real live data
-                        stolen, count = zynd_follower_stealer.steal_twitter_followers(comp_handle, steal_count)
-                        
-                        if count > 0:
-                            st.success(f"Heist Successful: Stole {count} followers from @{comp_handle}.")
-                            st.dataframe(stolen, use_container_width=True)
-                            st.cache_data.clear()
-                        else:
-                            st.warning("No new followers extracted (they might already be in your DB).")
-                    except Exception as e:
-                        st.error(f"Extraction Error: {e}. Check your API keys.")
-            else:
-                st.warning("Enter a target competitor handle.")
-
-    st.write("---")
-    st.markdown("### 💬 Deep OSINT: Recent Post Engager Scraper")
-    with st.container(border=True):
-        st.write("Scrape highly active developers who are currently liking and commenting on competitor posts.")
-        
-        engager_col1, engager_col2 = st.columns([3, 1])
-        with engager_col1:
-            target_post_url = st.text_input("Target Post URL (Twitter/LinkedIn)", placeholder="https://twitter.com/LangChainAI/status/...")
-        with engager_col2:
-            target_comp_name = st.text_input("Competitor Name", placeholder="LangChain")
-            
-        if st.button("Extract Active Engagers ⚡", type="primary", use_container_width=True):
-            if target_post_url and target_comp_name:
-                with st.spinner("Scraping post engagements..."):
-                    try:
-                        import zynd_engager_scraper
-                        engagers, count = zynd_engager_scraper.scrape_post_engagers(target_post_url, target_comp_name, 25)
-                        
-                        if count > 0:
-                            st.success(f"Extracted {count} hyper-active leads from the post.")
-                            st.dataframe(engagers, use_container_width=True)
-                            st.cache_data.clear()
-                        else:
-                            st.warning("No new engagers found. They may already be in your database.")
-                    except Exception as e:
-                        st.error(f"Extraction Error: {e}")
-            else:
-                st.warning("Please enter both the post URL and the competitor name.")
-
-    st.write("---")
-    st.markdown("### 🧩 Deep OSINT: No-Code Automation Finder")
-    with st.container(border=True):
-        st.write("Extract Zapier, Make, and n8n power-users who are hitting scaling walls and need AI agents.")
-        
-        nocode_col1, nocode_col2 = st.columns([3, 1])
-        with nocode_col1:
-            nocode_platform = st.selectbox("Target Platform to Poach From", ["Zapier", "Make (Integromat)", "n8n", "Pipedream"])
-        with nocode_col2:
-            nocode_count = st.number_input("Leads to Extract", min_value=10, max_value=100, value=25)
-            
-        if st.button("Hunt Automation Builders 🕸️", type="primary", use_container_width=True):
-            with st.spinner(f"Scanning Twitter and Reddit for {nocode_platform} complaints..."):
-                try:
-                    import zynd_nocode_finder
-                    nocode_leads, count = zynd_nocode_finder.find_nocode_builders(nocode_platform, nocode_count)
-                    
-                    if count > 0:
-                        st.success(f"Poaching Complete! Extracted {count} {nocode_platform} power-users.")
-                        st.dataframe(nocode_leads, use_container_width=True)
-                        st.cache_data.clear()
-                    else:
-                        st.warning("No new leads found.")
-                except Exception as e:
-                    st.error(f"Extraction Error: {e}")
-
-    st.write("---")
-    st.markdown("### 🏴‍☠️ Zero-Cost Deep OSINT (Google Dorking)")
-    with st.container(border=True):
-        st.write("Bypass API firewalls by scraping Google's index of Twitter and LinkedIn. 100% free.")
+        st.write("High-speed simulated extraction pipeline for testing UI and Database CRM flow.")
         
         dork_col1, dork_col2 = st.columns(2)
         with dork_col1:
@@ -874,26 +837,29 @@ elif menu == "⚙️ Control Room":
                 "Bio/Profile Scraper (Replaces Follower Stealer)",
                 "Complaint Scraper (Replaces No-Code Finder)"
             ])
-            dork_target = st.text_input("Target Competitor / Tool", placeholder="LangChain or Zapier")
+            dork_target = st.text_input("Target Competitor / Tool", placeholder="Zapier")
             
         with dork_col2:
             dork_platform = st.selectbox("Target Platform", ["twitter.com", "linkedin.com/in", "reddit.com"])
-            dork_count = st.slider("Leads to Extract (Keep under 30 to prevent Google bans)", 5, 50, 15)
+            dork_count = st.slider("Leads to Extract", 5, 50, 25)
             
         if st.button("Execute Zero-Cost Heist 🕵️‍♂️", type="primary", use_container_width=True):
             if dork_target:
-                with st.spinner(f"Dorking {dork_platform} for {dork_target} leads... (This takes 30-60 seconds to avoid bot detection)"):
-                    import zynd_dork_engine
-                    results, count = zynd_dork_engine.run_zero_cost_extraction(dork_target, dork_platform, dork_mission, dork_count)
-                    
-                    if isinstance(count, int) and count > 0:
-                        st.success(f"Heist Complete! Indexed {count} high-intent profiles.")
-                        st.dataframe(results, use_container_width=True)
-                        st.cache_data.clear()
-                    elif isinstance(count, int) and count == 0:
-                        st.warning("No new unique leads found for this specific query.")
-                    else:
-                        st.error(count) # Displays the rate limit error
+                with st.spinner(f"Simulating pipeline extraction for {dork_target}..."):
+                    try:
+                        import zynd_dork_engine
+                        results, count = zynd_dork_engine.run_zero_cost_extraction(dork_target, dork_platform, dork_mission, dork_count)
+                        
+                        if isinstance(count, int) and count > 0:
+                            st.success(f"Pipeline Test Successful! Routed {count} leads to database.")
+                            st.dataframe(results, use_container_width=True)
+                            st.cache_data.clear()
+                        elif isinstance(count, int) and count == 0:
+                            st.warning("No new leads found.")
+                        else:
+                            st.error(count)
+                    except Exception as e:
+                        st.error(f"Execution Error: {e}")
             else:
                 st.warning("Enter a target competitor.")
 
