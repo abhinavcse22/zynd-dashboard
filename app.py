@@ -64,19 +64,29 @@ if not check_password():
 # ==========================================
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_full_database():
-    def get_url(name): return f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(name)}"
-    try: gh = pd.read_csv(get_url("GitHub Leads"))
-    except: gh = pd.DataFrame()
-    try: rd = pd.read_csv(get_url("Reddit Leads"))
-    except: rd = pd.DataFrame()
-    try: tw = pd.read_csv(get_url("Twitter Leads"))
-    except: tw = pd.DataFrame()
-    try: star = pd.read_csv(get_url("github_stargazer_leads"))
-    except: star = pd.DataFrame()
-    try: fork = pd.read_csv(get_url("Fork Sniper Leads"))
-    except: fork = pd.DataFrame()
+    """Securely loads data using Service Account Credentials instead of public CSV links."""
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+    client = gspread.authorize(creds)
+    
+    # Helper function to securely load a tab into a DataFrame
+    def secure_load(tab_name):
+        try:
+            worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
+            records = worksheet.get_all_records()
+            return pd.DataFrame(records) if records else pd.DataFrame()
+        except Exception as e:
+            st.sidebar.error(f"⚠️ Failed to load '{tab_name}': {str(e)}")
+            return pd.DataFrame()
+
+    # Load all 5 core databases
+    gh = secure_load("GitHub Leads")
+    rd = secure_load("Reddit Leads")
+    tw = secure_load("Twitter Leads")
+    star = secure_load("github_stargazer_leads")
+    fork = secure_load("Fork Sniper Leads")
     
     return gh, rd, tw, star, fork
 
@@ -132,8 +142,8 @@ with st.sidebar:
     ])
     st.markdown("---")
     st.info(f"🟢 **System Online**\n\nLast Sync: {pd.Timestamp.now().strftime('%H:%M')}")
-    if st.button("🚪 Log Out", type="secondary"):
-        st.session_state["password_correct"] = False
+    if st.button("🔄 Force Data Sync", use_container_width=True):
+        st.cache_data.clear()
         st.rerun()
 
 # ==========================================
