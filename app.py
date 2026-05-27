@@ -198,45 +198,87 @@ if menu == "📈 Campaign Dashboard":
             crm_data = pd.DataFrame(sheet.worksheet("Master CRM").get_all_records())
             
             if not crm_data.empty:
+                # --- 🧹 DATA SANITIZATION ENGINE ---
+                # 1. Clean the Pipeline Statuses (Fixing the URL bug)
+                valid_statuses = ["Not Contacted", "Message 1 Sent", "Follow-Up 1 Sent", "Replied - Interested", "Replied - Pass", "DO NOT CONTACT 🛑"]
+                if 'Status' in crm_data.columns:
+                    crm_data['Clean_Status'] = crm_data['Status'].apply(lambda x: x if x in valid_statuses else "Not Contacted")
+                else:
+                    crm_data['Clean_Status'] = "Not Contacted"
+                    
+                # 2. Clean the Sources (Grouping them neatly)
+                def clean_source(src):
+                    src = str(src).lower()
+                    if 'reddit' in src or 'pain point' in src or 'deep engine' in src: return 'Reddit'
+                    if 'github' in src or 'stargazer' in src or 'fork' in src: return 'GitHub'
+                    if 'twitter' in src or 'x.com' in src or 'ghost search' in src: return 'Twitter'
+                    if 'telegram' in src or 'discord' in src or 'slack' in src: return 'Communities'
+                    if 'directory' in src or 'hackathon' in src: return 'Web OSINT'
+                    return 'Other OSINT'
+                    
+                if 'Source' in crm_data.columns:
+                    crm_data['Clean_Source'] = crm_data['Source'].apply(clean_source)
+                else:
+                    crm_data['Clean_Source'] = "Unknown"
+
+                # --- 📊 TOP METRICS ---
                 col1, col2, col3 = st.columns(3)
                 
-                with col1:
-                    st.metric("Total Leads Extracted", len(crm_data))
-                with col2:
-                    contacted = len(crm_data[crm_data['Status'] != 'Not Contacted']) if 'Status' in crm_data.columns else 0
-                    st.metric("Leads Engaged", contacted)
-                with col3:
-                    conversion_rate = round((contacted / len(crm_data)) * 100, 1) if len(crm_data) > 0 and contacted > 0 else 0
-                    st.metric("Engagement Rate", f"{conversion_rate}%")
+                total_extracted = len(crm_data)
+                contacted = len(crm_data[crm_data['Clean_Status'] != 'Not Contacted'])
+                engagement_rate = round((contacted / total_extracted) * 100, 1) if total_extracted > 0 else 0
                 
-                st.write("---")
+                with col1:
+                    st.metric("Total Leads Extracted", f"{total_extracted:,}")
+                with col2:
+                    st.metric("Leads Engaged", f"{contacted:,}")
+                with col3:
+                    st.metric("Engagement Rate", f"{engagement_rate}%")
+                
+                st.markdown("<br>", unsafe_allow_html=True) # Adds breathing room
+                
+                # --- 🎨 BEAUTIFIED CHARTS ---
                 chart_col1, chart_col2 = st.columns(2)
                 
                 with chart_col1:
-                    st.markdown("#### Leads by Source")
-                    if 'Source' in crm_data.columns:
-                        source_counts = crm_data['Source'].value_counts().reset_index()
-                        source_counts.columns = ['Source', 'Count']
-                        fig_source = px.pie(source_counts, values='Count', names='Source', hole=0.4, template="plotly_dark")
-                        st.plotly_chart(fig_source, use_container_width=True)
-                    else:
-                        st.warning("Column 'Source' not found in Master CRM.")
+                    st.markdown("#### 🎯 Leads by Source")
+                    source_counts = crm_data['Clean_Source'].value_counts().reset_index()
+                    source_counts.columns = ['Source', 'Count']
+                    
+                    # Donut chart with no messy legend, labels inside
+                    fig_source = px.pie(
+                        source_counts, values='Count', names='Source', hole=0.5,
+                        template="plotly_dark",
+                        color_discrete_sequence=px.colors.qualitative.Pastel
+                    )
+                    fig_source.update_traces(textposition='inside', textinfo='percent+label', showlegend=False)
+                    fig_source.update_layout(margin=dict(t=20, b=20, l=20, r=20), paper_bgcolor="rgba(0,0,0,0)")
+                    st.plotly_chart(fig_source, use_container_width=True)
                     
                 with chart_col2:
-                    st.markdown("#### Pipeline Status")
-                    if 'Status' in crm_data.columns:
-                        status_counts = crm_data['Status'].value_counts().reset_index()
-                        status_counts.columns = ['Status', 'Count']
-                        fig_status = px.bar(status_counts, x='Status', y='Count', color='Status', template="plotly_dark")
-                        st.plotly_chart(fig_status, use_container_width=True)
-                    else:
-                        st.warning("Column 'Status' not found in Master CRM.")
+                    st.markdown("#### 📊 Pipeline Status")
+                    status_counts = crm_data['Clean_Status'].value_counts().reset_index()
+                    status_counts.columns = ['Status', 'Count']
+                    
+                    # Clean bar chart with angled text
+                    fig_status = px.bar(
+                        status_counts, x='Status', y='Count', color='Status',
+                        template="plotly_dark",
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    fig_status.update_layout(
+                        xaxis_title="", yaxis_title="Number of Leads",
+                        showlegend=False, margin=dict(t=20, b=20, l=20, r=20),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        xaxis=dict(tickangle=-45) # Angles the text so it doesn't overlap
+                    )
+                    st.plotly_chart(fig_status, use_container_width=True)
             else:
                 st.info("Your CRM database tab is empty. Go to the Control Room and engage the scrapers!")
                 
         except Exception as e:
-            st.error(f"Setup Notice: Create a sheet tab named 'Master CRM' with columns: Username, Source, Status, Owner, Next Follow-Up. Details: {e}")
-
+            st.error(f"Setup Notice: Check Google Sheets formatting. Details: {e}")
+            
 # ==========================================
 # 📈 TAB: PIPELINE OVERVIEW
 # ==========================================
