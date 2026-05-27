@@ -110,36 +110,60 @@ def load_full_database():
     return gh, rd, tw, star, fork
 
 def clean_database():
+    """Enterprise-grade background sweeper that cleans all operational tabs."""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
     total_removed = 0
-    try:
-        gh_sheet = client.open_by_key(SHEET_ID).worksheet("GitHub Leads")
-        gh_data = gh_sheet.get_all_records()
-        if gh_data:
-            df = pd.DataFrame(gh_data)
-            before = len(df)
-            df.drop_duplicates(subset=['Project URL'], keep='first', inplace=True)
-            after = len(df)
-            if before > after:
-                gh_sheet.clear()
-                gh_sheet.update([df.columns.values.tolist()] + df.values.tolist())
-                total_removed += (before - after)
-    except: pass
-    try:
-        rd_sheet = client.open_by_key(SHEET_ID).worksheet("Reddit Leads")
-        rd_data = rd_sheet.get_all_records()
-        if rd_data:
-            df = pd.DataFrame(rd_data)
-            before = len(df)
-            df.drop_duplicates(subset=['Post URL'], keep='first', inplace=True)
-            after = len(df)
-            if before > after:
-                rd_sheet.clear()
-                rd_sheet.update([df.columns.values.tolist()] + df.values.tolist())
-                total_removed += (before - after)
-    except: pass
+    
+    # 1. The Map: Defines exactly which column makes a lead "unique" in each tab
+    cleaning_map = {
+        "GitHub Leads": "Project URL",
+        "Reddit Leads": "Post URL",
+        "Twitter Leads": "Post URL",
+        "github_stargazer_leads": "github_profile_url",
+        "Fork Sniper Leads": "Profile URL",
+        "Telegram Leads": "User ID",
+        "Influencer Leads": "URL",
+        "Issue Leads": "Username"
+    }
+
+    # 2. Iterate through every sheet dynamically
+    for tab_name, unique_key in cleaning_map.items():
+        try:
+            worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
+            data = worksheet.get_all_records()
+            
+            if not data:
+                continue
+                
+            df = pd.DataFrame(data)
+            
+            # Skip if the target column doesn't exist (prevents crashes)
+            if unique_key not in df.columns:
+                continue
+
+            before_count = len(df)
+            
+            # Keep the first instance we found, drop all subsequent identical ones
+            df.drop_duplicates(subset=[unique_key], keep='first', inplace=True)
+            after_count = len(df)
+
+            if before_count > after_count:
+                # SAFE OVERWRITE: Instead of clearing the whole sheet which risks data loss,
+                # we prepare the exact grid of data and update it in one solid block.
+                # (We still clear, but we do it right before a guaranteed payload)
+                payload = [df.columns.values.tolist()] + df.values.tolist()
+                worksheet.clear()
+                worksheet.update(payload)
+                
+                total_removed += (before_count - after_count)
+                
+        except Exception as e:
+            # We log the error to the Streamlit UI instead of failing silently
+            st.sidebar.warning(f"⚠️ Sweeper skipped '{tab_name}': {str(e)}")
+            continue
+
     return total_removed
 
 # Unpack the 5 databases safely
