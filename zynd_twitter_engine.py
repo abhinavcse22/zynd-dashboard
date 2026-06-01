@@ -14,6 +14,7 @@ TWITTER_QUERIES = [
     '(site:x.com OR site:twitter.com) "building an AI agent" -filter:links',
     '(site:x.com OR site:twitter.com) "LangGraph" "error" OR "stuck"',
     '(site:x.com OR site:twitter.com) "CrewAI" "stuck" OR "issue"',
+    'site:x.com/status "ChatGPT" OR "AI"',
     '(site:x.com OR site:twitter.com) "n8n workflow" "alternative"'
 ]
 
