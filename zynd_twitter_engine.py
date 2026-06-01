@@ -23,8 +23,16 @@ def run_twitter_scraper():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
     
-    records = sheet.get_all_records()
-    existing_urls = {str(row.get('Post URL', '')) for row in records if row.get('Post URL')}
+    # --- BULLETPROOF DEDUPLICATION FIX ---
+    # get_all_values() pulls raw lists instead of dictionaries, bypassing all header errors
+    raw_data = sheet.get_all_values()
+    existing_urls = set()
+    if len(raw_data) > 0:
+        try:
+            url_idx = raw_data[0].index('Post URL')
+            existing_urls = {str(row[url_idx]) for row in raw_data[1:] if len(row) > url_idx and row[url_idx]}
+        except ValueError:
+            pass # Fails gracefully if the header is missing
     new_leads = []
     
     # 1. Anti-Throttle: Shuffle queries so patterns don't emerge on the search engine
