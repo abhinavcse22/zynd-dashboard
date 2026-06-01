@@ -9,13 +9,12 @@ import random
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# Expanded matrix using 2026 search weights (combining both x.com and twitter.com)
+# Optimized 2026 keyword arrays designed to capture active profiles and index entries
 TWITTER_QUERIES = [
-    '(site:x.com OR site:twitter.com) "building an AI agent" -filter:links',
-    '(site:x.com OR site:twitter.com) "LangGraph" "error" OR "stuck"',
-    '(site:x.com OR site:twitter.com) "CrewAI" "stuck" OR "issue"',
-    'site:x.com/status "ChatGPT" OR "AI"',
-    '(site:x.com OR site:twitter.com) "n8n workflow" "alternative"'
+    'site:x.com "AI agent" builder',
+    'site:x.com "LangGraph" error OR stuck',
+    'site:x.com "CrewAI" issue OR framework',
+    'site:x.com "n8n" workflow automation'
 ]
 
 def run_twitter_scraper():
@@ -24,25 +23,24 @@ def run_twitter_scraper():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
     
-    # --- BULLETPROOF DEDUPLICATION FIX ---
-    # get_all_values() pulls raw lists instead of dictionaries, bypassing all header errors
+    # Secure row extraction using raw values to bypass header errors completely
     raw_data = sheet.get_all_values()
     existing_urls = set()
     if len(raw_data) > 0:
         try:
             url_idx = raw_data[0].index('Post URL')
-            existing_urls = {str(row[url_idx]) for row in raw_data[1:] if len(row) > url_idx and row[url_idx]}
+            existing_urls = {str(row[url_idx]).lower().strip() for row in raw_data[1:] if len(row) > url_idx}
         except ValueError:
-            pass # Fails gracefully if the header is missing
+            pass 
+
     new_leads = []
+    ignored_routes = {'home', 'search', 'explore', 'intent', 'share', 'i', 'privacy', 'tos', 'settings', 'about'}
     
-    # 1. Anti-Throttle: Shuffle queries so patterns don't emerge on the search engine
     shuffled_queries = TWITTER_QUERIES.copy()
     random.shuffle(shuffled_queries)
 
     for query in shuffled_queries:
         try:
-            # Re-instantiating inside the loop mimics a new guest browser session
             with DDGS() as ddgs:
                 results = list(ddgs.text(query, max_results=15))
                 
@@ -50,14 +48,24 @@ def run_twitter_scraper():
                     continue
                     
                 for result in results:
-                    post_url = result.get('href', '')
+                    post_url = str(result.get('href', '')).strip()
+                    post_url_lower = post_url.lower()
                     
-                    if post_url in existing_urls or "/status/" not in post_url: 
+                    if post_url_lower in existing_urls:
                         continue
                     
-                    # Regex mapping handles both legacy twitter.com and modern x.com links
-                    username_match = re.search(r'(?:twitter\.com|x\.com)/([^/]+)/status', post_url)
-                    username = username_match.group(1) if username_match else "Unknown"
+                    # Intercept any valid x.com or twitter.com base domain
+                    if "x.com" not in post_url_lower and "twitter.com" not in post_url_lower:
+                        continue
+                        
+                    # Extract the core handle name cleanly from the primary URL path
+                    username_match = re.search(r'(?:twitter\.com|x\.com)/([^/]+)', post_url)
+                    if not username_match:
+                        continue
+                        
+                    username = username_match.group(1).split('?')[0]
+                    if username.lower() in ignored_routes:
+                        continue
                     
                     score = 8 if any(kw in query.lower() for kw in ['error', 'stuck', 'issue']) else 6
                     date_str = datetime.now().strftime('%Y-%m-%d')
@@ -74,15 +82,13 @@ def run_twitter_scraper():
                         date_str, 
                         score
                     ])
-                    existing_urls.add(post_url)
+                    existing_urls.add(post_url_lower)
             
-            # Defensive variable pacing to shield our IP layout
-            time.sleep(random.uniform(4.0, 7.0)) 
+            # Anti-throttling random delay
+            time.sleep(random.uniform(3.0, 5.0)) 
             
         except Exception as e:
-            # If rate-limited, skip quietly or show soft warning instead of hard crash
             if "402" in str(e) or "ratelimit" in str(e).lower():
-                print("⚠️ Search engine requested temporary pacing cooldown.")
                 break
             continue
 
