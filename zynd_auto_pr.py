@@ -20,7 +20,8 @@ def generate_zynd_pr(target_repo):
     try:
         original_repo = g.get_repo(target_repo)
         user = g.get_user()
-
+        
+        # 🛑 SECURITY FIX 0: The Archive Radar
         if original_repo.archived:
             return False, "Target repository is archived (read-only). Skipping to save API calls."
         
@@ -30,15 +31,12 @@ def generate_zynd_pr(target_repo):
             return False, f"TTL Violation: Repo hasn't been updated since {original_repo.pushed_at.date()}. Aborting to save account reputation."
 
         # 🛑 SECURITY FIX 2: The "Blind Spam" Prevention
-        # Ensure the repo actually uses Python before we push a .py file to it
         if original_repo.language != "Python":
             langs = original_repo.get_languages()
             if "Python" not in langs:
                 return False, f"Language Mismatch: Repo is built in {original_repo.language}. Pushing a .py file will trigger spam filters."
 
         # --- ANTI-BAN CHECK (FIXED) ---
-        # Fetch open PRs and verify the owner manually using Python 
-        # so we don't accidentally count other people's PRs.
         open_prs = original_repo.get_pulls(state='open')
         for pr in open_prs:
             if pr.head.user.login == user.login:
@@ -47,17 +45,16 @@ def generate_zynd_pr(target_repo):
         # 1. Command GitHub to create the Fork
         forked_repo = user.create_fork(original_repo)
         
-        # 🛠️ ARCHITECTURE FIX 3: Dynamic Fork Polling (Replaces hardcoded time.sleep)
+        # 🛠️ ARCHITECTURE FIX 3: Dynamic Fork Polling
         max_attempts = 15
         fork_ready = False
         for attempt in range(max_attempts):
             try:
-                # Test if the fork is fully initialized on GitHub's servers
                 forked_repo.get_branch(original_repo.default_branch)
                 fork_ready = True
                 break
             except Exception:
-                time.sleep(2) # Wait 2 seconds and ping GitHub again
+                time.sleep(2) 
                 
         if not fork_ready:
             return False, "GitHub timed out while building the fork. Try again later."
@@ -68,8 +65,7 @@ def generate_zynd_pr(target_repo):
         new_branch_name = f"zynd-monetization-wrapper-{int(time.time())}"
         forked_repo.create_git_ref(ref=f"refs/heads/{new_branch_name}", sha=ref.object.sha)
         
-        # 3. Write the Zynd Agent Wrapper file
-# 3. Write the Zynd Agent Wrapper file
+        # 3. Write the Zynd Agent Wrapper file (High-Conversion Payload)
         file_content = """# Zynd Network Wrapper
 # This registers your agent on the Zynd x402 network for discoverability.
 # Docs & Dashboard: https://zynd.ai 
@@ -91,7 +87,13 @@ def register_agent():
 if __name__ == "__main__":
     register_agent()
 """
-
+        forked_repo.create_file(
+            path="zynd_wrapper.py",
+            message="feat: Add Zynd x402 monetization wrapper",
+            content=file_content,
+            branch=new_branch_name
+        )
+        
         # --- SPINTAX GENERATION ---
         greetings = ["Hey!", "Hi there!", "Hello!", "Hey team!"]
         compliments = ["Been following this repo for a bit.", "Really clean codebase.", "Love the architecture you've set up here.", "Impressive agent build!"]
@@ -106,7 +108,7 @@ No Stripe accounts, no KYC, no complex billing infra required.
 
 **🛠️ To test this locally:**
 1. `pip install zyndai_agent`
-2. Run `python zynd_wrapper.py`
+2. `python zynd_wrapper.py`
 3. Track your agent at zynd.ai
 
 If you have any questions or want me to help you set up the wallet routing, just reply here or shoot me a DM. Happy building! 🚀"""
@@ -125,6 +127,7 @@ If you have any questions or want me to help you set up the wallet routing, just
         if "already exists" in str(e).lower():
             return False, "A branch or file with this name already exists in your fork."
         return False, str(e)
+
 
 def autonomous_pr_campaign(target_keyword="ai-agent", max_deploys=5):
     """
@@ -166,15 +169,14 @@ def autonomous_pr_campaign(target_keyword="ai-agent", max_deploys=5):
         
         if success:
             deployed_prs.append(f"✅ Success: {repo_name} -> {msg}")
-            
-            # 🛑 CRITICAL ANTI-BAN PROTOCOL 🛑
-            # If you fire 10 PRs in 10 seconds, GitHub will permanently ban your token.
-            # We must simulate human behavior by sleeping for 45 to 90 seconds between PRs.
-            if len(deployed_prs) < max_deploys:
-                sleep_time = random.randint(45, 90)
-                time.sleep(sleep_time)
         else:
-            # If it failed (archived, already PR'd, etc.), just skip to the next one
-            pass
+            # Log the skip/error silently to the app background logs so you can monitor it later
+            print(f"ℹ️ Skipped {repo_name}: {msg}")
+            
+        # 🛑 CRITICAL ANTI-BAN PROTOCOL (FIXED) 🛑
+        # Now placed OUTSIDE the success block. The engine will ALWAYS sleep for 1-2 minutes 
+        # before touching the next repo, regardless of whether it succeeded or threw an error.
+        sleep_time = random.randint(60, 120)
+        time.sleep(sleep_time)
 
     return deployed_prs
