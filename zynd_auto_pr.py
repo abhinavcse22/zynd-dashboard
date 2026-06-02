@@ -9,7 +9,12 @@ def generate_zynd_pr(target_repo):
     Enterprise-Grade Auto-PR Engine.
     Includes Fork-Polling, Language Verification, and strict 180-Day TTL enforcement.
     """
-    token = st.secrets["github"]["tokens"][0]
+    # 🛡️ Standalone Top-Level Secret Override
+    try:
+        token = st.secrets["ZYND_PR_TOKEN"]
+    except KeyError:
+        return False, "Configuration Error: 'ZYND_PR_TOKEN' not found in Streamlit Cloud Secrets."
+        
     g = Github(token)
     
     try:
