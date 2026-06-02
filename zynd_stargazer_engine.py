@@ -8,6 +8,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import uuid
 import concurrent.futures
 import random
+import re
 
 # --- CONFIGURATION ---
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
@@ -164,30 +165,53 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
     tasks_to_run = []
     
     for repo in target_repos[:max_repos]:
+        # Step 1: Hit page 1 first to check pagination links
         url = f"https://api.github.com/repos/{repo}/stargazers?per_page=100"
-        stargazers = make_request(url, headers_star, tokens)
         
-        if not stargazers: continue
+        current_token = random.choice(tokens)
+        headers_star['Authorization'] = f'token {current_token}'
+        res = requests.get(url, headers=headers_star)
+        
+        if res.status_code != 200:
+            continue
+            
+        stargazers = res.json()
+        
+        # Step 2: If there are multiple pages, jump to the LAST page to get hyper-recent stars
+        if 'Link' in res.headers:
+            links = res.headers['Link']
+            # Find the maximum page number using regex
+            matches = re.findall(r'page=(\d+)>; rel="last"', links)
+            if matches:
+                last_page = matches[0]
+                url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page}"
+                stargazers_last = make_request(url_last, headers_star, tokens)
+                if stargazers_last:
+                    stargazers = stargazers_last
+        
+        if not stargazers: 
+            continue
+
+        # Reverse the list so the absolute absolute newest stars are processed first
+        stargazers.reverse()
 
         for star in stargazers[:max_stargazers]:
             # --- 6 MONTH STRICT FILTER ---
             starred_at = star.get('starred_at', '')
             if starred_at:
                 dt = datetime.strptime(starred_at, "%Y-%m-%dT%H:%M:%SZ")
-                # If they starred the repo more than 180 days ago, skip them entirely
                 if (datetime.now() - dt).days > 180:
-                    continue 
-            # -----------------------------
+                    continue # Skip old historical intent
             
             username = star['user']['login']
-            if username in seen_usernames: continue 
+            if username in seen_usernames: 
+                continue 
             seen_usernames.add(username)
             tasks_to_run.append((star, repo, tokens, headers_std, 1))
 
     final_data = []
-    print(f"🚀 Launching Turbo Threads for {len(tasks_to_run)} leads...")
+    print(f"🚀 Launching Turbo Threads for {len(tasks_to_run)} recent leads...")
     
-    # REDUCED CONCURRENCY TO 5 TO PROTECT GITHUB TOKENS FROM SECONDARY BANS
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_single_stargazer, *task) for task in tasks_to_run]
         for future in concurrent.futures.as_completed(futures):
@@ -210,3 +234,4 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
         return len(df_final)
     
     return len(final_data) if dry_run else 0
+    
