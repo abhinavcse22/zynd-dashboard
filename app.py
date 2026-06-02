@@ -629,7 +629,7 @@ elif menu == "⚙️ Control Room":
                 st.write("Extract encrypted user rosters across restricted instances.")
                 omni_platform = st.radio("Access Matrix", ["Discord", "Slack"], horizontal=True)
                 auth_token = st.text_input(f"{omni_platform} Handshake Token", type="password")
-                target_id = st.text_input("Guild / Server Instance ID", placeholder="8301823901...")
+                target_id = st.text_input("Discord Channel URL or ID", placeholder="Paste full channel URL here...")
                 if st.button(f"Infiltrate {omni_platform} 🎯", use_container_width=True):
                     if auth_token:
                         with st.spinner("Extracting directory rows..."):
