@@ -790,6 +790,31 @@ elif menu == "⚙️ Control Room":
                             data, status = zynd_git_social.fetch_latest_commit_and_post(my_repo)
                             if data: st.success("Pushed update logged!"); st.code(data['post'])
                             else: st.error(status)
+                                
+            with media_t4 if 'media_t4' in locals() else media_t1: # Fallback or clean addition
+                st.markdown("#### ⚔️ Real-Time Competitor Infiltration Matrix")
+                st.write("Scan competitor landing pages or code wrappers, identify feature shifts, and auto-build counter messaging blueprints.")
+                
+                comp_c1, comp_c2 = st.columns(2)
+                comp_name = comp_c1.text_input("Competitor Identifier", placeholder="CrewAI")
+                comp_url = comp_c2.text_input("Target URL Extraction Node", placeholder="https://www.crewai.com/")
+                
+                if st.button("🛰️ Scan and Intercept Competitor Vector", use_container_width=True):
+                    if comp_name and comp_url:
+                        with st.spinner(f"Intercepting {comp_name} node headers... Analysis in flight..."):
+                            import zynd_competitor_radar
+                            response_matrix = zynd_competitor_radar.execute_competitor_radar_sweep(comp_name, comp_url)
+                            
+                            if response_matrix["status"] == "No Change":
+                                st.success(response_matrix["message"])
+                            elif response_matrix["status"] == "Updated":
+                                st.error(f"🚨 Tactical Update Logged: New positioning variations or features deployed by {comp_name}!")
+                                st.markdown("### 📝 Auto-Generated Counter Positioning Blueprint:")
+                                st.code(response_matrix["payload"], language="markdown")
+                            else:
+                                st.error(response_matrix["message"])
+                    else:
+                        st.warning("Ensure both target identifier and URL nodes are populated.")
 
     # --- SUB-TAB 5: DATABASE & CRM ---
     with ctrl_tab5:
