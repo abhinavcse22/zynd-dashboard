@@ -328,6 +328,38 @@ elif menu == "📈 Pipeline Overview":
 
     st.divider()
     
+    # --- NEW: CRM ROUTING ENGINE ---
+    st.subheader("🗄️ Automated CRM Router")
+    router_col1, router_col2 = st.columns(2)
+    
+    with router_col1:
+        st.write("Distribute fresh leads and enforce DNC protocols.")
+        if st.button("🔄 Execute Round-Robin Auto-Assignment", use_container_width=True):
+            with st.spinner("Routing leads & checking DNC firewall..."):
+                import zynd_pipeline_manager
+                # Step 1: Secure the DNC list
+                dnc_count = zynd_pipeline_manager.enforce_dnc_list()
+                if dnc_count > 0:
+                    st.warning(f"🛑 Moved {dnc_count} opted-out developers to the DNC Vault.")
+                
+                # Step 2: Distribute the rest
+                assigned_count = zynd_pipeline_manager.auto_assign_leads()
+                st.success(f"✅ Auto-assigned {assigned_count} fresh leads across the team.")
+
+    with router_col2:
+        st.write("Leads requiring immediate outreach today.")
+        if st.button("📡 Scan Follow-Up Radar", use_container_width=True):
+            with st.spinner("Scanning cross-channel database..."):
+                import zynd_pipeline_manager
+                due_leads = zynd_pipeline_manager.get_followup_radar()
+                if due_leads:
+                    st.error(f"🚨 {len(due_leads)} leads are due for follow-up today!")
+                    st.dataframe(due_leads, use_container_width=True)
+                else:
+                    st.success("✅ Inbox Zero! No follow-ups due today.")
+
+    st.divider()
+    
     col_left, col_right = st.columns([2, 1])
     with col_left:
         st.subheader("Recent High-Intent Activity")
