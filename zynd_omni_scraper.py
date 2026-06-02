@@ -80,6 +80,25 @@ def scrape_discord_server(channel_id, auth_token):
         last_message_id = messages[-1]['id']
         messages_scanned += len(messages)
         time.sleep(1.5) # Anti-Ban Pacing
+
+    # --- PUSH TO GOOGLE SHEETS ---
+    if leads:
+        try:
+            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+            gclient = gspread.authorize(creds)
+            sheet = gclient.open_by_key(SHEET_ID).worksheet("Discord Leads")
+            
+            # Deduplicate to ensure we never save the same person twice
+            existing_usernames = set(sheet.col_values(1)[1:]) if len(sheet.get_all_values()) > 1 else set()
+            new_rows = [row for row in leads if row[0] not in existing_usernames]
+            
+            if new_rows:
+                sheet.append_rows(new_rows)
+        except Exception as e:
+            return leads, f"Scraped successfully, but failed to save to Google Sheets: {str(e)}"
+            
+    return leads, "Success"
             
     return leads, "Success"
 
