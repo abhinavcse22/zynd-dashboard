@@ -2,11 +2,12 @@ from github import Github
 import time
 import random
 import streamlit as st
+from datetime import datetime, timezone, timedelta
 
 def generate_zynd_pr(target_repo):
     """
-    Forks a repo, injects the Zynd wrapper, and submits a Pull Request.
-    Includes anti-spam randomization and duplicate checks to protect your account.
+    Enterprise-Grade Auto-PR Engine.
+    Includes Fork-Polling, Language Verification, and strict 180-Day TTL enforcement.
     """
     token = st.secrets["github"]["tokens"][0]
     g = Github(token)
@@ -15,17 +16,42 @@ def generate_zynd_pr(target_repo):
         original_repo = g.get_repo(target_repo)
         user = g.get_user()
         
-        # --- ANTI-BAN CHECK 1: Prevent Duplicate PRs ---
-        # Check if you already have an open PR on this repo
+        # 🛑 SECURITY FIX 1: The 180-Day TTL Intent Check
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=180)
+        if original_repo.pushed_at < cutoff_date:
+            return False, f"TTL Violation: Repo hasn't been updated since {original_repo.pushed_at.date()}. Aborting to save account reputation."
+
+        # 🛑 SECURITY FIX 2: The "Blind Spam" Prevention
+        # Ensure the repo actually uses Python before we push a .py file to it
+        if original_repo.language != "Python":
+            langs = original_repo.get_languages()
+            if "Python" not in langs:
+                return False, f"Language Mismatch: Repo is built in {original_repo.language}. Pushing a .py file will trigger spam filters."
+        
+        # --- ANTI-BAN CHECK ---
         open_prs = original_repo.get_pulls(state='open', head=f"{user.login}")
         if open_prs.totalCount > 0:
-            return False, "You already have an open PR on this repository. Aborting to prevent spam."
+            return False, "You already have an open PR on this repository."
 
-        # 1. Create a Fork
+        # 1. Command GitHub to create the Fork
         forked_repo = user.create_fork(original_repo)
-        time.sleep(5) # Delay to let GitHub servers catch up
         
-        # 2. Create a new branch
+        # 🛠️ ARCHITECTURE FIX 3: Dynamic Fork Polling (Replaces hardcoded time.sleep)
+        max_attempts = 15
+        fork_ready = False
+        for attempt in range(max_attempts):
+            try:
+                # Test if the fork is fully initialized on GitHub's servers
+                forked_repo.get_branch(original_repo.default_branch)
+                fork_ready = True
+                break
+            except Exception:
+                time.sleep(2) # Wait 2 seconds and ping GitHub again
+                
+        if not fork_ready:
+            return False, "GitHub timed out while building the fork. Try again later."
+        
+        # 2. Create the new branch cleanly
         source_branch = original_repo.default_branch
         ref = forked_repo.get_git_ref(f"heads/{source_branch}")
         new_branch_name = f"zynd-monetization-wrapper-{int(time.time())}"
@@ -54,8 +80,7 @@ if __name__ == "__main__":
             branch=new_branch_name
         )
         
-        # --- ANTI-BAN CHECK 2: Spintax Randomization ---
-        # Randomize the greetings and formatting so GitHub's spam filter doesn't detect a pattern
+        # --- SPINTAX GENERATION ---
         greetings = ["Hi!", "Hey there!", "Hello!", "Hey!"]
         compliments = ["Awesome project.", "Really love what you've built here.", "Great work on this repo.", "Impressive agent setup!"]
         closings = ["Happy to answer any questions or help test it!", "Let me know if you have any questions!", "Cheers!", "Happy building!"]
@@ -68,7 +93,7 @@ I noticed this agent wasn't registered on the [Zynd open network](https://zynd.a
 
 No Stripe account or billing infra required. {random.choice(closings)}"""
 
-        # 4. Submit the Pull Request
+        # 4. Submit the Pull Request Payload
         pr = original_repo.create_pull(
             title=pr_title,
             body=pr_body,
@@ -79,7 +104,6 @@ No Stripe account or billing infra required. {random.choice(closings)}"""
         return True, pr.html_url
         
     except Exception as e:
-        # Catch standard GitHub API errors gracefully
         if "already exists" in str(e).lower():
             return False, "A branch or file with this name already exists in your fork."
         return False, str(e)
