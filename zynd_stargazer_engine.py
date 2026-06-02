@@ -20,7 +20,7 @@ def get_sheet():
     return client.open_by_key(SHEET_ID).worksheet("github_stargazer_leads")
 
 def make_request(url, headers, tokens):
-    """Thread-safe API request with stateless random token rotation."""
+    """Thread-safe API request that respects GitHub's strict Secondary Rate Limits."""
     retries = 3
     while retries > 0:
         current_token = random.choice(tokens)
@@ -30,7 +30,11 @@ def make_request(url, headers, tokens):
         if response.status_code == 200:
             return response.json()
         elif response.status_code in [403, 429]:
-            time.sleep(1) # Back off if rate limited
+            # Read GitHub's abuse defense headers to pause exactly as long as they demand
+            if 'retry-after' in response.headers:
+                time.sleep(int(response.headers['retry-after']) + 1)
+            else:
+                time.sleep(2) 
             retries -= 1
         else:
             return None
@@ -103,23 +107,19 @@ def process_single_stargazer(star, repo, tokens, headers_std, source_count):
     username = user['login']
     starred_at = star.get('starred_at', '')
 
-    # 1. Fetch Profile and Repos
     profile_url = f"https://api.github.com/users/{username}"
     profile_data = make_request(profile_url, headers_std, tokens)
     
     repos_url = f"https://api.github.com/users/{username}/repos?sort=updated&per_page=30"
     repos_data = make_request(repos_url, headers_std, tokens)
 
-    # 2. Score the lead BEFORE doing the heavy email hack
     score, bucket, action, kws, matched_repos, has_repo, activity_date = score_lead(profile_data or {}, repos_data or [], source_count)
 
-    # 3. CONDITIONAL OSINT: Only hack commits if it's a good lead
     final_email = profile_data.get('email') if profile_data else ""
     if not final_email and repos_data and score >= 5:
         final_email = get_hidden_email(username, repos_data, headers_std, tokens)
         if final_email: print(f"🔓 OSINT Unlocked hidden email for high-value lead: {username}")
 
-    # 4. Compile the final dictionary
     lead_dict = {
         'lead_id': str(uuid.uuid4())[:8], 'github_username': username,
         'github_profile_url': user['html_url'], 'source_repo': repo,
@@ -147,16 +147,22 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
     tokens = st.secrets["github"]["tokens"]
     sheet = get_sheet()
     
-    # Track existing to prevent duplicates
-    existing_records = sheet.get_all_records()
-    seen_usernames = {str(row.get('github_username', '')) for row in existing_records}
+    # --- BULLETPROOF DEDUPLICATION ---
+    raw_data = sheet.get_all_values()
+    seen_usernames = set()
+    if len(raw_data) > 0:
+        try:
+            # Assuming github_username is the 2nd column
+            user_idx = raw_data[0].index('github_username')
+            seen_usernames = {str(row[user_idx]).strip() for row in raw_data[1:] if len(row) > user_idx}
+        except ValueError:
+            pass 
 
     headers_star = {'Accept': 'application/vnd.github.v3.star+json'}
     headers_std = {'Accept': 'application/vnd.github.v3+json'}
 
     tasks_to_run = []
     
-    # Stage 1: Fast Collection of Stargazer Usernames
     for repo in target_repos[:max_repos]:
         url = f"https://api.github.com/repos/{repo}/stargazers?per_page=100"
         stargazers = make_request(url, headers_star, tokens)
@@ -164,17 +170,25 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
         if not stargazers: continue
 
         for star in stargazers[:max_stargazers]:
+            # --- 6 MONTH STRICT FILTER ---
+            starred_at = star.get('starred_at', '')
+            if starred_at:
+                dt = datetime.strptime(starred_at, "%Y-%m-%dT%H:%M:%SZ")
+                # If they starred the repo more than 180 days ago, skip them entirely
+                if (datetime.now() - dt).days > 180:
+                    continue 
+            # -----------------------------
+            
             username = star['user']['login']
-            if username in seen_usernames: continue # Skip if we already have them
+            if username in seen_usernames: continue 
             seen_usernames.add(username)
             tasks_to_run.append((star, repo, tokens, headers_std, 1))
 
-    # Stage 2: Multithreaded Processing (The 10x Speedup)
     final_data = []
     print(f"🚀 Launching Turbo Threads for {len(tasks_to_run)} leads...")
     
-    # Process 10 users at the exact same time
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    # REDUCED CONCURRENCY TO 5 TO PROTECT GITHUB TOKENS FROM SECONDARY BANS
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_single_stargazer, *task) for task in tasks_to_run]
         for future in concurrent.futures.as_completed(futures):
             try:
@@ -184,7 +198,6 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
             except Exception as e:
                 pass
 
-    # Stage 3: Push to Cloud
     if not dry_run and final_data:
         df_final = pd.DataFrame(final_data)
         cols = ['lead_id', 'github_username', 'github_profile_url', 'source_repo', 'starred_at', 'bio', 'location', 'company', 'public_email', 'website', 'twitter_or_x', 'linkedin', 'public_repos_count', 'followers_count', 'recent_activity_date', 'matched_keywords', 'matched_repos', 'has_ai_agent_repo', 'lead_score', 'lead_bucket', 'suggested_outreach_action', 'outreach_status', 'reply_status', 'agent_registered', 'registered_agent_url', 'notes', 'created_at', 'updated_at']
@@ -193,7 +206,7 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
             if col not in df_final.columns: df_final[col] = ''
                 
         df_final = df_final[cols].fillna("")
-        sheet.append_rows(df_final.values.tolist()) # Use append_rows instead of clear() to keep history
+        sheet.append_rows(df_final.values.tolist()) 
         return len(df_final)
     
     return len(final_data) if dry_run else 0
