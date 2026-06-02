@@ -27,11 +27,14 @@ def generate_zynd_pr(target_repo):
             langs = original_repo.get_languages()
             if "Python" not in langs:
                 return False, f"Language Mismatch: Repo is built in {original_repo.language}. Pushing a .py file will trigger spam filters."
-        
-        # --- ANTI-BAN CHECK ---
-        open_prs = original_repo.get_pulls(state='open', head=f"{user.login}")
-        if open_prs.totalCount > 0:
-            return False, "You already have an open PR on this repository."
+
+        # --- ANTI-BAN CHECK (FIXED) ---
+        # Fetch open PRs and verify the owner manually using Python 
+        # so we don't accidentally count other people's PRs.
+        open_prs = original_repo.get_pulls(state='open')
+        for pr in open_prs:
+            if pr.head.user.login == user.login:
+                return False, "You already have an open PR on this repository."
 
         # 1. Command GitHub to create the Fork
         forked_repo = user.create_fork(original_repo)
