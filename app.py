@@ -836,3 +836,31 @@ elif menu == "⚙️ Control Room":
                         success, msg = zynd_crm_engine.update_lead_status(db_target, col_index_map[db_target], lead_target, assignee, lead_status, str(follow_up))
                         if success: st.success(msg); st.cache_data.clear()
                         else: st
+
+        
+        st.divider()
+        st.markdown("### 🎥 Influencer Campaign Matrix")
+        st.write("Manage active YouTube sponsorships, track deliverables, and measure ROI.")
+        
+        with st.container(border=True):
+            inf_col1, inf_col2, inf_col3 = st.columns(3)
+            with inf_col1:
+                target_channel = st.text_input("YouTube Channel Name")
+                inf_stage = st.selectbox("Campaign Stage", ["Initial Outreach", "Negotiating Rates", "Awaiting Draft", "Content Live 🚀", "Paid & Closed"])
+            with inf_col2:
+                sponsorship_cost = st.number_input("Sponsorship Cost ($)", min_value=0, value=0, step=50)
+                views_tracked = st.number_input("Views Delivered", min_value=0, value=0, step=100)
+            with inf_col3:
+                live_link = st.text_input("Live Video URL (If published)")
+                
+            if st.button("Update Creator Campaign 📊", type="primary", use_container_width=True):
+                if target_channel:
+                    with st.spinner("Logging financial and campaign metrics..."):
+                        import zynd_influencer_tracker
+                        success, msg = zynd_influencer_tracker.update_influencer_stage(
+                            target_channel, inf_stage, sponsorship_cost, views_tracked, live_link
+                        )
+                        if success: st.success(msg)
+                        else: st.error(msg)
+                else:
+                    st.warning("Please enter a target Channel Name.")
