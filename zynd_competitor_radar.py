@@ -5,10 +5,12 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import re
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def get_db_sheet():
+    """Authenticates and fetches the Competitor Radar database sheet."""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
@@ -76,46 +78,59 @@ def generate_counter_usecase(competitor, live_text):
     return "AI Engine failed to compute counter positioning data."
 
 def execute_competitor_radar_sweep(competitor_name, target_url):
-    """Runs the full diff engine, detects changes, generates use-case, and updates ledger."""
+    """Runs the full diff engine, detects changes, generates use-case, and safely updates ledger."""
+    
+    # 🛡️ THE FIX: Auto-clean messy Markdown links or spaces
+    url_match = re.search(r'(https?://[^\s\)]+)', target_url)
+    clean_url = url_match.group(1) if url_match else target_url.strip()
+    
     sheet = get_db_sheet()
     records = sheet.get_all_records()
     today = datetime.now().strftime('%Y-%m-%d')
     
-    # 1. Fetch current live structural state
-    live_content = fetch_site_text(target_url)
+    # 1. Fetch current live structural state using the CLEANED URL
+    live_content = fetch_site_text(clean_url)
     if not live_content:
-        return {"status": "Error", "message": f"Could not establish connection to {target_url} endpoint."}
+        return {"status": "Error", "message": f"Could not establish connection to {clean_url} endpoint. Ensure the site allows bots."}
         
     # 2. Locate existing record to run diff check
     matched_row_idx = None
     historical_content = ""
     
-    for i, row in enumerate(records, start=2):
-        if str(row.get("Competitor Name")).strip().lower() == competitor_name.strip().lower():
-            matched_row_idx = i
-            historical_content = str(row.get("Last Scraped Content", ""))
-            break
+    if records:
+        for i, row in enumerate(records, start=2):
+            if str(row.get("Competitor Name", "")).strip().lower() == competitor_name.strip().lower():
+                matched_row_idx = i
+                historical_content = str(row.get("Last Scraped Content", ""))
+                break
 
     # 3. Process the Diff Engine
-    # If the text matches, no modifications were made by their engineering/marketing team
     if historical_content and live_content[:1000] == historical_content[:1000]:
         return {"status": "No Change", "message": f"Verified {competitor_name}. No adjustments to positioning or features detected."}
 
-    # If we made it here, a change was detected or it's a completely new competitor node!
     st.info(f"💥 Alteration detected in {competitor_name} surface array! Dispatching OpenRouter engine...")
     counter_payload = generate_counter_usecase(competitor_name, live_content)
     
     # 4. Save to Sheets Database
-    # Dynamically map headers to prevent grid alignment corruption
+    # --- 🛡️ THE FIX: SAFE HEADER INJECTION ---
     headers = sheet.row_values(1)
-    c_name_col = headers.index("Competitor Name") + 1
-    url_col = headers.index("Target URL") + 1
-    content_col = headers.index("Last Scraped Content") + 1
-    feat_col = headers.index("Last Feature Detected") + 1
-    date_col = headers.index("Date Tracked") + 1
+    expected_headers = ["Competitor Name", "Target URL", "Last Scraped Content", "Last Feature Detected", "Date Tracked"]
+    
+    # If the sheet is blank, inject the headers automatically!
+    if not headers:
+        sheet.append_row(expected_headers)
+        headers = expected_headers
+
+    try:
+        c_name_col = headers.index("Competitor Name") + 1
+        url_col = headers.index("Target URL") + 1
+        content_col = headers.index("Last Scraped Content") + 1
+        feat_col = headers.index("Last Feature Detected") + 1
+        date_col = headers.index("Date Tracked") + 1
+    except ValueError:
+        return {"status": "Error", "message": "Google Sheet headers are corrupted. Delete the 'Competitor Radar' tab and let the script recreate it."}
 
     if matched_row_idx:
-        # Update existing node
         cells = [
             gspread.Cell(row=matched_row_idx, col=content_col, value=live_content),
             gspread.Cell(row=matched_row_idx, col=feat_col, value=counter_payload[:2000]),
@@ -123,10 +138,9 @@ def execute_competitor_radar_sweep(competitor_name, target_url):
         ]
         sheet.update_cells(cells)
     else:
-        # Append entirely fresh competitor tracking node
         new_row = [""] * len(headers)
         new_row[c_name_col - 1] = competitor_name
-        new_row[url_col - 1] = target_url
+        new_row[url_col - 1] = clean_url
         new_row[content_col - 1] = live_content
         new_row[feat_col - 1] = counter_payload[:2000]
         new_row[date_col - 1] = today
