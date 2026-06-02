@@ -1,23 +1,43 @@
 import requests
 import re
-from bs4 import BeautifulSoup
-import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+import time
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import random
 
+# Configuration
+GITHUB_TOKENS = st.secrets["github"]["tokens"]
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
+def make_request(url):
+    """Fault-tolerant request handler with token rotation for secondary API checks."""
+    if isinstance(GITHUB_TOKENS, str): tokens = [GITHUB_TOKENS]
+    else: tokens = GITHUB_TOKENS
+        
+    retries = 3
+    while retries > 0:
+        token = random.choice(tokens)
+        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code in [403, 429]:
+            time.sleep(int(response.headers.get('retry-after', 2))) 
+            retries -= 1
+        else:
+            return None
+    return None
+
 def scan_awesome_directory(repo_path):
-    """Scrapes 'Awesome' GitHub directories to extract established AI agent projects."""
+    """Scrapes directories, verifies repos are GitHub native, and strictly enforces 180-Day TTL."""
     
-    # We hit the raw markdown file directly to bypass UI scraping issues
     url = f"https://raw.githubusercontent.com/{repo_path}/main/README.md"
     response = requests.get(url)
     
     if response.status_code != 200:
-        # Fallback to master branch if main doesn't exist
         url = f"https://raw.githubusercontent.com/{repo_path}/master/README.md"
         response = requests.get(url)
         if response.status_code != 200:
@@ -26,29 +46,59 @@ def scan_awesome_directory(repo_path):
     content = response.text
     extracted_agents = []
     today = datetime.now().strftime('%Y-%m-%d')
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=180)
     
-    # Regex to find markdown links with descriptions: - [Project Name](link) - Description
-    # This is the standard format for almost all directory lists
+    # Regex to find markdown links with descriptions
     pattern = re.compile(r'[-*]\s+\[([^\]]+)\]\((http[^\)]+)\)\s*[-:]?\s*(.*)')
     matches = pattern.findall(content)
     
-    for match in matches:
+    if not matches:
+        return [], "No valid projects found. Ensure it's formatted as a standard markdown list."
+
+    # 🌟 UI UX: Progress Tracker for Live API Verification
+    progress_bar = st.progress(0, text=f"Found {len(matches)} links. Verifying 180-Day TTL Activity...")
+    
+    verified_leads = []
+    
+    for idx, match in enumerate(matches):
+        progress_bar.progress((idx + 1) / len(matches), text=f"Verifying project {idx + 1}/{len(matches)}...")
+        
         name = match[0].strip()
         link = match[1].strip()
-        description = match[2].strip()
+        description = match[2].strip() or "No description provided"
         
-        # Filter out table of contents or generic internal links
-        if "github.com" in link or "http" in link:
-            extracted_agents.append([
-                name,
-                description if description else "No description provided",
-                link,
-                f"Directory: {repo_path}",
-                today
-            ])
+        # 🛑 TTL WALL & GITHUB VALIDATION
+        if "github.com/" in link:
+            # Extract owner/repo cleanly using regex
+            repo_match = re.search(r'github\.com/([^/]+)/([^/\?#]+)', link)
+            if repo_match:
+                owner = repo_match.group(1)
+                repo_name = repo_match.group(2)
+                api_url = f"https://api.github.com/repos/{owner}/{repo_name}"
+                
+                repo_data = make_request(api_url)
+                if repo_data:
+                    pushed_at_str = repo_data.get('pushed_at')
+                    if pushed_at_str:
+                        dt = datetime.strptime(pushed_at_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                        # Drop the lead entirely if it hasn't been pushed to in 180 days
+                        if dt < cutoff_date:
+                            continue
+                            
+                        # It survived the TTL filter! Add it.
+                        verified_leads.append([
+                            name,
+                            description,
+                            f"https://github.com/{owner}/{repo_name}", # Clean URL
+                            f"Directory: {repo_path}",
+                            today
+                        ])
+                time.sleep(0.3) # Fast pacing for secondary checks
 
-    if not extracted_agents:
-        return [], "No valid projects found in this directory. Ensure it's formatted as a standard markdown list."
+    progress_bar.empty()
+
+    if not verified_leads:
+        return [], "All found projects were dead (failed the 180-day TTL) or not GitHub repositories."
 
     # Push to Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -57,7 +107,7 @@ def scan_awesome_directory(repo_path):
     sheet = gclient.open_by_key(SHEET_ID).worksheet("Directory Leads")
 
     existing_links = set(sheet.col_values(3)[1:]) if len(sheet.get_all_values()) > 1 else set()
-    new_rows = [row for row in extracted_agents if row[2] not in existing_links]
+    new_rows = [row for row in verified_leads if row[2] not in existing_links]
     
     if new_rows:
         sheet.append_rows(new_rows)
