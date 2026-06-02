@@ -7,57 +7,79 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-def scrape_discord_server(server_id, auth_token):
-    """Rips member data from Discord using Pagination and Anti-Ban pacing."""
-    headers = {"Authorization": auth_token}
+def scrape_discord_server(channel_id, auth_token):
+    """
+    Active Talker Sniper: Bypasses 403 Admin blocks by targeting channel messages 
+    instead of the static server member list. Extracts highly active leads.
+    """
+    # Sanitize the input (in case you pasted a full URL instead of just the ID)
+    clean_channel_id = str(channel_id).strip()
+    if "discord.com/channels/" in clean_channel_id:
+        clean_channel_id = clean_channel_id.split("/")[-1]
+    elif "/" in clean_channel_id:
+        clean_channel_id = clean_channel_id.split("/")[-1]
+
+    # Clean the token (removes accidental quotes)
+    clean_token = auth_token.replace('"', '').replace("'", "").strip()
+    headers = {"Authorization": clean_token}
+    
     leads = []
+    seen_users = set()
     today = datetime.now().strftime('%Y-%m-%d')
     cutoff_date = datetime.now(timezone.utc) - timedelta(days=180)
     
-    last_user_id = "0"
+    last_message_id = ""
     has_more = True
+    messages_scanned = 0
     
-    while has_more:
-        # Paginating using the 'after' parameter
-        url = f"https://discord.com/api/v9/guilds/{server_id}/members?limit=1000&after={last_user_id}"
+    # We will scan up to 1000 recent messages in the target channel
+    while has_more and messages_scanned < 1000:
+        url = f"https://discord.com/api/v9/channels/{clean_channel_id}/messages?limit=100"
+        if last_message_id:
+            url += f"&before={last_message_id}"
+            
         response = requests.get(url, headers=headers)
         
-        if response.status_code != 200:
-            return leads, f"Discord Error: {response.status_code} - Check permissions or rate limits."
+        if response.status_code == 403:
+            return leads, "Discord Error 403: You do not have permission to read this channel. Ensure you have accepted the server rules."
+        elif response.status_code != 200:
+            return leads, f"Discord Error {response.status_code}: Check your token and channel ID."
             
-        members = response.json()
-        if not members:
+        messages = response.json()
+        if not messages:
             break
             
-        for m in members:
-            user = m.get('user', {})
-            if user.get('bot'): continue
+        for msg in messages:
+            author = msg.get('author', {})
+            user_id = author.get('id', '')
             
-            # 🛑 180-DAY TTL CHECK: Skip people who joined years ago and went dark
-            joined_at_str = m.get('joined_at', '')
-            if joined_at_str:
+            # Skip bots and people we already extracted in this run
+            if author.get('bot') or not user_id or user_id in seen_users:
+                continue
+                
+            # Time constraint: Only care about messages sent in the last 180 days
+            msg_timestamp_str = msg.get('timestamp', '')
+            if msg_timestamp_str:
                 try:
-                    # Discord returns ISO 8601 strings
-                    joined_at = datetime.fromisoformat(joined_at_str.replace("Z", "+00:00"))
-                    if joined_at < cutoff_date:
+                    msg_date = datetime.fromisoformat(msg_timestamp_str.replace("Z", "+00:00"))
+                    if msg_date < cutoff_date:
+                        has_more = False # We hit the 6-month wall, stop paginating backward
                         continue
                 except ValueError:
                     pass
 
             leads.append([
-                user.get('username', ''),
-                f"Discord Server: {server_id}",
-                user.get('global_name', ''),
-                "No Bio (Discord)",
+                author.get('username', ''),
+                f"Discord Channel: {clean_channel_id}",
+                author.get('global_name', ''),
+                str(msg.get('content', ''))[:100].replace('\n', ' '), # Save a snippet of what they said!
                 today
             ])
+            seen_users.add(user_id)
             
-            last_user_id = user.get('id', last_user_id)
-            
-        if len(members) < 1000:
-            has_more = False
-        else:
-            time.sleep(1.5) # Anti-Ban Pacing: Don't hammer the API
+        last_message_id = messages[-1]['id']
+        messages_scanned += len(messages)
+        time.sleep(1.5) # Anti-Ban Pacing
             
     return leads, "Success"
 
