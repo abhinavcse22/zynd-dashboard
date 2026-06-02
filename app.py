@@ -673,6 +673,7 @@ elif menu == "⚙️ Control Room":
     with ctrl_tab4:
         st.markdown("### 🦾 Automated Action Vectors")
         ai_col1, ai_col2 = st.columns(2)
+        
         with ai_col1:
             with st.container(border=True):
                 st.subheader("🤖 The Auto-PR Payload Engine")
@@ -686,23 +687,24 @@ elif menu == "⚙️ Control Room":
                             else: st.error(result)
                     else: st.warning("Repository destination parameter missing.")
 
-        import zynd_auto_pr
+            with st.container(border=True):
+                st.subheader("🤖 Autonomous Campaign Deployer")
+                st.write("Scout GitHub for target frameworks and execute high-volume deployment.")
+                keyword = st.text_input("Target Keyword", value="crewai")
+                pr_limit = st.slider("Max PRs to Deploy", 1, 10, 5)
 
-st.markdown("### 🤖 Autonomous Campaign Deployer")
-keyword = st.text_input("Target Keyword", value="crewai")
-pr_limit = st.slider("Max PRs to Deploy", 1, 10, 5)
-
-if st.button("🔥 Launch Autonomous Campaign"):
-    with st.spinner(f"Scouting GitHub for '{keyword}' developers... This will take a few minutes."):
-        results = zynd_auto_pr.autonomous_pr_campaign(target_keyword=keyword, max_deploys=pr_limit)
-        
-        if not results:
-            st.error("Campaign finished, but no eligible targets were found or deployed.")
-        else:
-            st.success(f"Deployed {len(results)} payloads successfully!")
-            for res in results:
-                st.markdown(res)
-                
+                if st.button("🔥 Launch Autonomous Campaign", use_container_width=True):
+                    with st.spinner(f"Scouting GitHub for '{keyword}' developers... This will take a few minutes."):
+                        import zynd_auto_pr
+                        results = zynd_auto_pr.autonomous_pr_campaign(target_keyword=keyword, max_deploys=pr_limit)
+                        
+                        if not results:
+                            st.error("Campaign finished, but no eligible targets were found or deployed.")
+                        else:
+                            st.success(f"Deployed {len(results)} payloads successfully!")
+                            for res in results:
+                                st.markdown(res)
+                                
         with ai_col2:
             with st.container(border=True):
                 st.subheader("🧠 Pro AI Drafter")
@@ -776,26 +778,4 @@ if st.button("🔥 Launch Autonomous Campaign"):
                         col_index_map = {"Telegram Leads": 1, "Reddit Leads": 0, "Twitter Leads": 0, "Fork Sniper Leads": 0, "Influencer Leads": 1}
                         success, msg = zynd_crm_engine.update_lead_status(db_target, col_index_map[db_target], lead_target, assignee, lead_status, str(follow_up))
                         if success: st.success(msg); st.cache_data.clear()
-                        else: st.error(msg)
-                else: st.warning("Identifier field required.")
-
-        st.markdown("### 🧹 Database Housekeeping")
-        with st.container(border=True):
-            st.write("Run local maintenance optimizations to drop overlapping database entries.")
-            if st.button("Clean Duplicates", type="primary", use_container_width=True):
-                with st.spinner("Sweeping sheets arrays..."):
-                    removed = clean_database()
-                    if removed > 0: st.success(f"Deduplication cycle completed. Dropped rows: {removed}"); st.cache_data.clear()
-                    else: st.info("Database matrix is completely optimized. Zero overlapping instances found.")
-            
-            # Integrated Workaround for NoCode Poacher
-            st.write("---")
-            st.subheader("🕸️ No-Code Pipeline Simulator")
-            nc_col1, nc_col2 = st.columns(2)
-            nc_plat = nc_col1.selectbox("Poach Target Source", ["Zapier", "Make (Integromat)", "n8n"])
-            nc_cnt = nc_col2.number_input("Lead Count", 5, 50, 25)
-            if st.button("Hunt Automation Builders 🕸️", use_container_width=True):
-                import zynd_nocode_finder
-                leads, count = zynd_nocode_finder.find_nocode_builders(nc_plat, nc_cnt)
-                st.success(f"Poaching simulation tracked! Generated {count} high-intent entries.")
-                st.dataframe(leads, use_container_width=True)
+                        else: st
