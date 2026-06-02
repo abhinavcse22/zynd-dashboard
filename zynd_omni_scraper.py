@@ -33,7 +33,7 @@ def scrape_discord_server(channel_id, auth_token):
     messages_scanned = 0
     
     # We will scan up to 1000 recent messages in the target channel
-    while has_more and messages_scanned < 1000:
+    while has_more and messages_scanned < 5000:
         url = f"https://discord.com/api/v9/channels/{clean_channel_id}/messages?limit=100"
         if last_message_id:
             url += f"&before={last_message_id}"
