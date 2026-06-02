@@ -9,6 +9,7 @@ import uuid
 import concurrent.futures
 import random
 import re
+import math
 
 # --- CONFIGURATION ---
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
@@ -30,8 +31,10 @@ def make_request(url, headers, tokens):
         
         if response.status_code == 200:
             return response.json()
+        elif response.status_code == 401:
+            st.error("❌ GitHub Token Unauthorized! Check your st.secrets keys configuration.")
+            return "AUTH_ERROR"
         elif response.status_code in [403, 429]:
-            # Read GitHub's abuse defense headers to pause exactly as long as they demand
             if 'retry-after' in response.headers:
                 time.sleep(int(response.headers['retry-after']) + 1)
             else:
@@ -42,7 +45,6 @@ def make_request(url, headers, tokens):
     return None
 
 def get_hidden_email(username, repos_data, headers, tokens):
-    """OSINT Function: Hacks commit logs to find private email addresses."""
     for repo in repos_data[:3]: 
         repo_name = repo.get('name')
         commits_url = f"https://api.github.com/repos/{username}/{repo_name}/commits?author={username}&per_page=1"
@@ -103,7 +105,6 @@ def score_lead(user_data, repos_data, target_repos_count):
     return score, bucket, action, list(matched_keywords), matched_repos, has_ai_agent_repo, recent_activity_date
 
 def process_single_stargazer(star, repo, tokens, headers_std, source_count):
-    """The individual task run by the thread pool."""
     user = star['user']
     username = user['login']
     starred_at = star.get('starred_at', '')
@@ -119,7 +120,6 @@ def process_single_stargazer(star, repo, tokens, headers_std, source_count):
     final_email = profile_data.get('email') if profile_data else ""
     if not final_email and repos_data and score >= 5:
         final_email = get_hidden_email(username, repos_data, headers_std, tokens)
-        if final_email: print(f"🔓 OSINT Unlocked hidden email for high-value lead: {username}")
 
     lead_dict = {
         'lead_id': str(uuid.uuid4())[:8], 'github_username': username,
@@ -134,7 +134,7 @@ def process_single_stargazer(star, repo, tokens, headers_std, source_count):
         'suggested_outreach_action': action, 'updated_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
-    if profile_data:
+    if profile_data and isinstance(profile_data, dict):
         lead_dict.update({
             'bio': profile_data.get('bio', ''), 'location': profile_data.get('location', ''),
             'company': profile_data.get('company', ''), 'public_email': final_email, 
@@ -144,13 +144,15 @@ def process_single_stargazer(star, repo, tokens, headers_std, source_count):
 
     return lead_dict
 
-import math
-
 def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_run=False):
+    # --- 🪓 ANTI-STRING BUG PASS ---
     tokens = st.secrets["github"]["tokens"]
+    if isinstance(tokens, str):
+        tokens = [tokens] # Wraps single string secret into an iterable array
+        
     sheet = get_sheet()
     
-    # --- BULLETPROOF DEDUPLICATION ---
+    # Deduplication extraction
     raw_data = sheet.get_all_values()
     seen_usernames = set()
     if len(raw_data) > 0:
@@ -166,40 +168,45 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
     tasks_to_run = []
     
     for repo in target_repos[:max_repos]:
-        print(f"🔍 Analyzing repository mass for: {repo}")
+        st.info(f"🔍 Analyzing repository structure for: `{repo}`...")
         
-        # Step 1: Get the exact star count from the repo metadata
         repo_info_url = f"https://api.github.com/repos/{repo}"
         repo_info = make_request(repo_info_url, headers_std, tokens)
         
-        if not repo_info:
-            print(f"⚠️ Could not fetch metadata for {repo}. Skipping.")
+        if repo_info == "AUTH_ERROR" or not repo_info:
+            st.error(f"❌ Aborting. Could not establish communication with GitHub API endpoint.")
             continue
             
         total_stars = repo_info.get('stargazers_count', 0)
-        print(f"⭐ {repo} has {total_stars} total stars.")
+        st.write(f"📊 Meta-analysis: Repo has `{total_stars:,}` total stargazers.")
         
         if total_stars == 0:
             continue
 
-        # Step 2: Mathematically calculate the very last page
-        # GitHub limits pagination to 40,000 items (400 pages of 100)
-        # If a repo has more than 40k stars, we are forced to cap at page 400.
+        # Capping page parameters
         max_allowed_stars = min(total_stars, 40000) 
         last_page = math.ceil(max_allowed_stars / 100)
         
-        print(f"⏭️ Jumping directly to Page {last_page} to intercept the newest developers...")
+        st.write(f"⏭️ Route planning: Direct extraction on **Page {last_page}**...")
         
-        # Step 3: Fetch the final page
         url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page}"
         stargazers = make_request(url_last, headers_star, tokens)
         
-        if not stargazers:
-            print("⚠️ Failed to load the final page.")
+        if not stargazers or not isinstance(stargazers, list):
+            st.warning("⚠️ GitHub served an empty block for this pagination index. Trying page minus 1...")
+            if last_page > 1:
+                url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page - 1}"
+                stargazers = make_request(url_last, headers_star, tokens)
+
+        if not stargazers or not isinstance(stargazers, list):
+            st.error("❌ Failed to receive data payload back from GitHub cluster node.")
             continue
 
-        # Reverse so the absolute newest is index 0
         stargazers.reverse()
+        st.write(f"📥 Received `{len(stargazers)}` potential raw nodes. Commencing date isolation filter...")
+
+        skipped_by_date = 0
+        skipped_by_dup = 0
 
         for star in stargazers[:max_stargazers]:
             # --- 6 MONTH STRICT FILTER ---
@@ -208,26 +215,34 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
                 dt = datetime.strptime(starred_at, "%Y-%m-%dT%H:%M:%SZ")
                 days_ago = (datetime.now() - dt).days
                 if days_ago > 180:
+                    skipped_by_date += 1
                     continue 
             
             username = star['user']['login']
             if username in seen_usernames: 
+                skipped_by_dup += 1
                 continue 
+                
             seen_usernames.add(username)
             tasks_to_run.append((star, repo, tokens, headers_std, 1))
 
+        st.info(f"📊 Filter results: Dropped `{skipped_by_date}` stale histories, dropped `{skipped_by_dup}` duplicate keys.")
+
     final_data = []
-    print(f"🚀 Launching Turbo Threads for {len(tasks_to_run)} recent leads...")
-    
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = [executor.submit(process_single_stargazer, *task) for task in tasks_to_run]
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                lead = future.result()
-                if lead['lead_score'] >= min_score:
-                    final_data.append(lead)
-            except Exception as e:
-                pass
+    if tasks_to_run:
+        st.info(f"🚀 Thread-mapping active on `{len(tasks_to_run)}` qualified nodes...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(process_single_stargazer, *task) for task in tasks_to_run]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    lead = future.result()
+                    if lead['lead_score'] >= min_score:
+                        final_data.append(lead)
+                except Exception as e:
+                    st.write(f"⚠️ Micro-thread execution error skipped a lead. Details: {e}")
+                    pass
+    else:
+        st.warning("⚠️ Analysis complete, but 0 records cleared the initial gate.")
 
     if not dry_run and final_data:
         df_final = pd.DataFrame(final_data)
