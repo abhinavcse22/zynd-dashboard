@@ -685,6 +685,24 @@ elif menu == "⚙️ Control Room":
                             if success: st.success("PR Deployed!"); st.markdown(f"[🔗 View Live PR]({result})")
                             else: st.error(result)
                     else: st.warning("Repository destination parameter missing.")
+
+        import zynd_auto_pr
+
+st.markdown("### 🤖 Autonomous Campaign Deployer")
+keyword = st.text_input("Target Keyword", value="crewai")
+pr_limit = st.slider("Max PRs to Deploy", 1, 10, 5)
+
+if st.button("🔥 Launch Autonomous Campaign"):
+    with st.spinner(f"Scouting GitHub for '{keyword}' developers... This will take a few minutes."):
+        results = zynd_auto_pr.autonomous_pr_campaign(target_keyword=keyword, max_deploys=pr_limit)
+        
+        if not results:
+            st.error("Campaign finished, but no eligible targets were found or deployed.")
+        else:
+            st.success(f"Deployed {len(results)} payloads successfully!")
+            for res in results:
+                st.markdown(res)
+                
         with ai_col2:
             with st.container(border=True):
                 st.subheader("🧠 Pro AI Drafter")
