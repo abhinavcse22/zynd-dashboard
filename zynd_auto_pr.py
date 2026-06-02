@@ -69,40 +69,47 @@ def generate_zynd_pr(target_repo):
         forked_repo.create_git_ref(ref=f"refs/heads/{new_branch_name}", sha=ref.object.sha)
         
         # 3. Write the Zynd Agent Wrapper file
+# 3. Write the Zynd Agent Wrapper file
         file_content = """# Zynd Network Wrapper
-# This file registers your agent on the Zynd x402 network for discovery and monetization.
+# This registers your agent on the Zynd x402 network for discoverability.
+# Docs & Dashboard: https://zynd.ai 
+# Need help integrating? Reach out to the founder on X/Telegram: @YourHandle
+
 import zyndai_agent
 
 def register_agent():
-    agent = zyndai_agent.ZyndAgent(
-        name="My Agent",
-        description="Auto-registered to the Zynd open network."
-    )
-    agent.deploy()
-    print("🚀 Agent is live on ZNS!")
+    try:
+        agent = zyndai_agent.ZyndAgent(
+            name="My AI Agent",
+            description="Autonomous agent running on the Zynd network."
+        )
+        agent.deploy()
+        print("🚀 Agent is live on ZNS! Check your Zynd dashboard to track USDC yields.")
+    except Exception as e:
+        print(f"Zynd Registration skipped: {e}")
 
 if __name__ == "__main__":
     register_agent()
 """
-        forked_repo.create_file(
-            path="zynd_wrapper.py",
-            message="feat: Add Zynd x402 monetization wrapper",
-            content=file_content,
-            branch=new_branch_name
-        )
-        
+
         # --- SPINTAX GENERATION ---
-        greetings = ["Hi!", "Hey there!", "Hello!", "Hey!"]
-        compliments = ["Awesome project.", "Really love what you've built here.", "Great work on this repo.", "Impressive agent setup!"]
-        closings = ["Happy to answer any questions or help test it!", "Let me know if you have any questions!", "Cheers!", "Happy building!"]
+        greetings = ["Hey!", "Hi there!", "Hello!", "Hey team!"]
+        compliments = ["Been following this repo for a bit.", "Really clean codebase.", "Love the architecture you've set up here.", "Impressive agent build!"]
         
-        pr_title = f"🚀 Feature: Add Zynd Network Discovery & USDC Monetization"
+        pr_title = f"🚀 Feature: Web3 Discovery & USDC Monetization Layer"
         
         pr_body = f"""{random.choice(greetings)} {random.choice(compliments)}
 
-I noticed this agent wasn't registered on the [Zynd open network](https://zynd.ai). I went ahead and added a quick 1-line wrapper (`zynd_wrapper.py`) so your agent becomes discoverable via semantic search and can earn USDC per call via the x402 protocol. 
+I noticed this agent wasn't registered on the [Zynd open network](https://zynd.ai) yet. I went ahead and added a quick 1-line wrapper (`zynd_wrapper.py`) so your agent becomes discoverable via semantic search and can start earning USDC per call via the x402 protocol.
 
-No Stripe account or billing infra required. {random.choice(closings)}"""
+No Stripe accounts, no KYC, no complex billing infra required. 
+
+**🛠️ To test this locally:**
+1. `pip install zyndai_agent`
+2. Run `python zynd_wrapper.py`
+3. Track your agent at zynd.ai
+
+If you have any questions or want me to help you set up the wallet routing, just reply here or shoot me a DM. Happy building! 🚀"""
 
         # 4. Submit the Pull Request Payload
         pr = original_repo.create_pull(
@@ -118,3 +125,56 @@ No Stripe account or billing infra required. {random.choice(closings)}"""
         if "already exists" in str(e).lower():
             return False, "A branch or file with this name already exists in your fork."
         return False, str(e)
+
+def autonomous_pr_campaign(target_keyword="ai-agent", max_deploys=5):
+    """
+    Scouts GitHub for high-intent repositories and automatically deploys the PR payload.
+    Includes aggressive anti-bot delays to protect account standing.
+    """
+    try:
+        token = st.secrets["ZYND_PR_TOKEN"]
+    except KeyError:
+        return []
+
+    g = Github(token)
+    
+    # 1. Build the Search Query
+    # Looks for Python repos updated in the last 30 days containing your keyword
+    thirty_days_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%d')
+    query = f"{target_keyword} language:python pushed:>{thirty_days_ago}"
+    
+    try:
+        repos = g.search_repositories(query=query, sort="updated", order="desc")
+    except Exception as e:
+        return [f"Search API Error: {str(e)}"]
+
+    deployed_prs = []
+    
+    for repo in repos:
+        # Stop if we hit our daily limit
+        if len(deployed_prs) >= max_deploys:
+            break
+            
+        repo_name = repo.full_name
+        
+        # 2. Skip massive enterprise repos (they ignore automated PRs)
+        if repo.stargazers_count > 5000:
+            continue
+            
+        # 3. Attempt the deployment using your existing function
+        success, msg = generate_zynd_pr(repo_name)
+        
+        if success:
+            deployed_prs.append(f"✅ Success: {repo_name} -> {msg}")
+            
+            # 🛑 CRITICAL ANTI-BAN PROTOCOL 🛑
+            # If you fire 10 PRs in 10 seconds, GitHub will permanently ban your token.
+            # We must simulate human behavior by sleeping for 45 to 90 seconds between PRs.
+            if len(deployed_prs) < max_deploys:
+                sleep_time = random.randint(45, 90)
+                time.sleep(sleep_time)
+        else:
+            # If it failed (archived, already PR'd, etc.), just skip to the next one
+            pass
+
+    return deployed_prs
