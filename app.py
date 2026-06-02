@@ -864,3 +864,30 @@ elif menu == "⚙️ Control Room":
                         else: st.error(msg)
                 else:
                     st.warning("Please enter a target Channel Name.")
+
+        st.divider()
+        st.markdown("### 📝 Outreach History Ledger")
+        st.write("Maintain a permanent, append-only log of all communications to prevent collision and track team velocity.")
+        
+        with st.container(border=True):
+            hist_col1, hist_col2, hist_col3 = st.columns(3)
+            with hist_col1:
+                hist_lead = st.text_input("Lead Identifier (Handle/URL)", key="hist_lead")
+                hist_owner = st.selectbox("Executing Owner", ["Abhinav", "Co-Founder"], key="hist_owner")
+            with hist_col2:
+                hist_platform = st.selectbox("Platform", ["Twitter / X", "GitHub PR", "GitHub Issue", "Email", "LinkedIn", "Telegram", "Discord"])
+                hist_type = st.selectbox("Message Type", ["Initial Pitch", "Follow-up 1 (Value Add)", "Follow-up 2 (Breakup)", "Custom Reply"])
+            with hist_col3:
+                hist_notes = st.text_area("Notes / Message Snippet", height=110)
+                
+            if st.button("Log Outreach Event 💾", type="primary", use_container_width=True):
+                if hist_lead:
+                    with st.spinner("Appending event to permanent ledger..."):
+                        import zynd_outreach_history
+                        success, msg = zynd_outreach_history.log_outreach_event(
+                            hist_lead, hist_owner, hist_platform, hist_type, hist_notes
+                        )
+                        if success: st.success(msg)
+                        else: st.error(msg)
+                else:
+                    st.warning("A Lead Identifier is required to log an event.")
