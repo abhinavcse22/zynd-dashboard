@@ -8,7 +8,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import uuid
 import concurrent.futures
 import random
-import re
 import math
 
 # --- CONFIGURATION ---
@@ -45,6 +44,7 @@ def make_request(url, headers, tokens):
     return None
 
 def get_hidden_email(username, repos_data, headers, tokens):
+    """OSINT Function: Hacks commit logs to find private email addresses."""
     for repo in repos_data[:3]: 
         repo_name = repo.get('name')
         commits_url = f"https://api.github.com/repos/{username}/{repo_name}/commits?author={username}&per_page=1"
@@ -145,14 +145,13 @@ def process_single_stargazer(star, repo, tokens, headers_std, source_count):
     return lead_dict
 
 def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_run=False):
-    # --- 🪓 ANTI-STRING BUG PASS ---
     tokens = st.secrets["github"]["tokens"]
     if isinstance(tokens, str):
-        tokens = [tokens] # Wraps single string secret into an iterable array
+        tokens = [tokens] 
         
     sheet = get_sheet()
     
-    # Deduplication extraction
+    # --- SMART SYNC: DEDUPLICATION CACHE ---
     raw_data = sheet.get_all_values()
     seen_usernames = set()
     if len(raw_data) > 0:
@@ -183,50 +182,65 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
         if total_stars == 0:
             continue
 
-        # Capping page parameters
+        # Math to find the final page (max 40k due to GitHub API limits)
         max_allowed_stars = min(total_stars, 40000) 
         last_page = math.ceil(max_allowed_stars / 100)
         
-        st.write(f"⏭️ Route planning: Direct extraction on **Page {last_page}**...")
+        st.write(f"⏭️ Commencing Deep Scan backwards from Page {last_page}...")
         
-        url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page}"
-        stargazers = make_request(url_last, headers_star, tokens)
+        current_page = last_page
+        stars_processed = 0
+        consecutive_dupes = 0
+        hit_stale_wall = False
+        hit_overlap_wall = False
         
-        if not stargazers or not isinstance(stargazers, list):
-            st.warning("⚠️ GitHub served an empty block for this pagination index. Trying page minus 1...")
-            if last_page > 1:
-                url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page - 1}"
-                stargazers = make_request(url_last, headers_star, tokens)
-
-        if not stargazers or not isinstance(stargazers, list):
-            st.error("❌ Failed to receive data payload back from GitHub cluster node.")
-            continue
-
-        stargazers.reverse()
-        st.write(f"📥 Received `{len(stargazers)}` potential raw nodes. Commencing date isolation filter...")
-
-        skipped_by_date = 0
-        skipped_by_dup = 0
-
-        for star in stargazers[:max_stargazers]:
-            # --- 6 MONTH STRICT FILTER ---
-            starred_at = star.get('starred_at', '')
-            if starred_at:
-                dt = datetime.strptime(starred_at, "%Y-%m-%dT%H:%M:%SZ")
-                days_ago = (datetime.now() - dt).days
-                if days_ago > 180:
-                    skipped_by_date += 1
-                    continue 
+        while current_page > 0 and stars_processed < max_stargazers and not hit_stale_wall and not hit_overlap_wall:
+            url = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={current_page}"
+            stargazers = make_request(url, headers_star, tokens)
             
-            username = star['user']['login']
-            if username in seen_usernames: 
-                skipped_by_dup += 1
-                continue 
+            if not stargazers or not isinstance(stargazers, list):
+                current_page -= 1
+                continue
                 
-            seen_usernames.add(username)
-            tasks_to_run.append((star, repo, tokens, headers_std, 1))
-
-        st.info(f"📊 Filter results: Dropped `{skipped_by_date}` stale histories, dropped `{skipped_by_dup}` duplicate keys.")
+            stargazers.reverse() # Absolute newest first
+            
+            for star in stargazers:
+                if stars_processed >= max_stargazers:
+                    break
+                    
+                starred_at = star.get('starred_at', '')
+                username = star['user']['login']
+                
+                if starred_at:
+                    dt = datetime.strptime(starred_at, "%Y-%m-%dT%H:%M:%SZ")
+                    days_ago = (datetime.now() - dt).days
+                    
+                    # 🛑 THE TIME WALL: 6-month hard stop
+                    if days_ago > 180:
+                        st.warning(f"🛑 Hit the 6-month time wall ({days_ago} days ago). Halting backward extraction.")
+                        hit_stale_wall = True
+                        break 
+                
+                # 🛑 THE OVERLAP WALL: Stop if we see 10 already-scraped users in a row
+                if username in seen_usernames: 
+                    consecutive_dupes += 1
+                    if consecutive_dupes >= 10:
+                        st.success(f"♻️ Smart Sync Triggered: Caught up to previously scraped leads. Halting to save API limits.")
+                        hit_overlap_wall = True
+                        break
+                    continue 
+                else:
+                    consecutive_dupes = 0 # Reset the counter when we find a fresh lead!
+                
+                stars_processed += 1
+                
+                formatted_date = starred_at[:10] if starred_at else "Unknown"
+                st.write(f"⭐ **{username}** (Starred: `{formatted_date}`) - Queuing for Scoring...")
+                
+                seen_usernames.add(username)
+                tasks_to_run.append((star, repo, tokens, headers_std, 1))
+                
+            current_page -= 1 # Flip to the next oldest page
 
     final_data = []
     if tasks_to_run:
@@ -239,10 +253,9 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
                     if lead['lead_score'] >= min_score:
                         final_data.append(lead)
                 except Exception as e:
-                    st.write(f"⚠️ Micro-thread execution error skipped a lead. Details: {e}")
                     pass
     else:
-        st.warning("⚠️ Analysis complete, but 0 records cleared the initial gate.")
+        st.warning("⚠️ Analysis complete. All active leads were already captured in previous runs.")
 
     if not dry_run and final_data:
         df_final = pd.DataFrame(final_data)
