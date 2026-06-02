@@ -144,6 +144,8 @@ def process_single_stargazer(star, repo, tokens, headers_std, source_count):
 
     return lead_dict
 
+import math
+
 def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_run=False):
     tokens = st.secrets["github"]["tokens"]
     sheet = get_sheet()
@@ -153,7 +155,6 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
     seen_usernames = set()
     if len(raw_data) > 0:
         try:
-            # Assuming github_username is the 2nd column
             user_idx = raw_data[0].index('github_username')
             seen_usernames = {str(row[user_idx]).strip() for row in raw_data[1:] if len(row) > user_idx}
         except ValueError:
@@ -165,34 +166,39 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
     tasks_to_run = []
     
     for repo in target_repos[:max_repos]:
-        # Step 1: Hit page 1 first to check pagination links
-        url = f"https://api.github.com/repos/{repo}/stargazers?per_page=100"
+        print(f"🔍 Analyzing repository mass for: {repo}")
         
-        current_token = random.choice(tokens)
-        headers_star['Authorization'] = f'token {current_token}'
-        res = requests.get(url, headers=headers_star)
+        # Step 1: Get the exact star count from the repo metadata
+        repo_info_url = f"https://api.github.com/repos/{repo}"
+        repo_info = make_request(repo_info_url, headers_std, tokens)
         
-        if res.status_code != 200:
+        if not repo_info:
+            print(f"⚠️ Could not fetch metadata for {repo}. Skipping.")
             continue
             
-        stargazers = res.json()
+        total_stars = repo_info.get('stargazers_count', 0)
+        print(f"⭐ {repo} has {total_stars} total stars.")
         
-        # Step 2: If there are multiple pages, jump to the LAST page to get hyper-recent stars
-        if 'Link' in res.headers:
-            links = res.headers['Link']
-            # Find the maximum page number using regex
-            matches = re.findall(r'page=(\d+)>; rel="last"', links)
-            if matches:
-                last_page = matches[0]
-                url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page}"
-                stargazers_last = make_request(url_last, headers_star, tokens)
-                if stargazers_last:
-                    stargazers = stargazers_last
-        
-        if not stargazers: 
+        if total_stars == 0:
             continue
 
-        # Reverse the list so the absolute absolute newest stars are processed first
+        # Step 2: Mathematically calculate the very last page
+        # GitHub limits pagination to 40,000 items (400 pages of 100)
+        # If a repo has more than 40k stars, we are forced to cap at page 400.
+        max_allowed_stars = min(total_stars, 40000) 
+        last_page = math.ceil(max_allowed_stars / 100)
+        
+        print(f"⏭️ Jumping directly to Page {last_page} to intercept the newest developers...")
+        
+        # Step 3: Fetch the final page
+        url_last = f"https://api.github.com/repos/{repo}/stargazers?per_page=100&page={last_page}"
+        stargazers = make_request(url_last, headers_star, tokens)
+        
+        if not stargazers:
+            print("⚠️ Failed to load the final page.")
+            continue
+
+        # Reverse so the absolute newest is index 0
         stargazers.reverse()
 
         for star in stargazers[:max_stargazers]:
@@ -200,8 +206,9 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
             starred_at = star.get('starred_at', '')
             if starred_at:
                 dt = datetime.strptime(starred_at, "%Y-%m-%dT%H:%M:%SZ")
-                if (datetime.now() - dt).days > 180:
-                    continue # Skip old historical intent
+                days_ago = (datetime.now() - dt).days
+                if days_ago > 180:
+                    continue 
             
             username = star['user']['login']
             if username in seen_usernames: 
@@ -234,4 +241,3 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
         return len(df_final)
     
     return len(final_data) if dry_run else 0
-    
