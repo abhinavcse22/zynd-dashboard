@@ -1,44 +1,81 @@
 import requests
+import time
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import random
 
-GITHUB_TOKEN = st.secrets.get("github", {}).get("token", "")
+# Configuration
+GITHUB_TOKENS = st.secrets["github"]["tokens"]
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-def headers():
-    if GITHUB_TOKEN:
-        return {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
-    return {"Accept": "application/vnd.github.v3+json"}
+def make_request(url):
+    """Fault-tolerant request handler with token rotation to prevent 403 crashes."""
+    if isinstance(GITHUB_TOKENS, str): tokens = [GITHUB_TOKENS]
+    else: tokens = GITHUB_TOKENS
+        
+    retries = 3
+    while retries > 0:
+        token = random.choice(tokens)
+        headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code in [403, 429]:
+            time.sleep(int(response.headers.get('retry-after', 2))) 
+            retries -= 1
+        else:
+            return None
+    return None
 
 def hunt_contributors(repo_path):
-    """Extracts developers who have successfully merged code into competitor repos."""
+    """Extracts elite developers who have successfully merged code in the last 180 days."""
     
-    url = f"https://api.github.com/repos/{repo_path}/contributors?per_page=100"
-    response = requests.get(url, headers=headers())
+    # 🛑 THE TTL WALL: Calculate the 6-month cutoff date exactly
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    if response.status_code != 200:
-        raise Exception(f"GitHub API Error {response.status_code}. Check repo name.")
+    # 🧠 THE HACK: Query the COMMITS endpoint with the 'since' parameter, not the contributors endpoint.
+    url = f"https://api.github.com/repos/{repo_path}/commits?since={cutoff_date}&per_page=100"
+    
+    with st.spinner(f"Scanning the last 180 days of commits in {repo_path}..."):
+        commits = make_request(url)
         
-    contributors = response.json()
-    if not contributors:
-        return [], 0
+        if commits is None:
+            return [], "GitHub API Error: Check repo name or ensure your token has not hit a rate limit."
+            
+        if not commits:
+            return [], "No active commits found in the last 180 days. This repository might be abandoned."
+
+    # Aggregate the active contributors dynamically
+    active_contributors = {}
+    for commit in commits:
+        author = commit.get('author')
+        if not author: 
+            continue # Skip commits not linked to a public GitHub account
+            
+        username = author.get('login', '')
+        if not username or 'bot' in username.lower() or '[bot]' in username.lower():
+            continue # Skip automated CI/CD bots
+            
+        if username not in active_contributors:
+            active_contributors[username] = {
+                'commits_in_window': 0,
+                'profile_url': author.get('html_url', '')
+            }
+        active_contributors[username]['commits_in_window'] += 1
 
     extracted_leads = []
     today = datetime.now().strftime('%Y-%m-%d')
     
-    for user in contributors:
-        username = user.get('login', '')
-        if 'bot' in username.lower() or not username:
-            continue
-            
+    for username, data in active_contributors.items():
         extracted_leads.append([
             username,
             repo_path,
-            user.get('contributions', 0),
-            user.get('html_url', ''),
+            data['commits_in_window'],
+            data['profile_url'],
             today
         ])
 
@@ -54,5 +91,5 @@ def hunt_contributors(repo_path):
     if new_rows:
         sheet.append_rows(new_rows)
 
-    display_data = [{"Developer": r[0], "Commits": r[2], "Profile": r[3]} for r in new_rows]
+    display_data = [{"Developer": r[0], "Recent Commits (180d)": r[2], "Profile": r[3]} for r in new_rows]
     return display_data, len(new_rows)
