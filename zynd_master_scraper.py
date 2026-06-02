@@ -17,28 +17,43 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service
 client = gspread.authorize(creds)
 
 def get_commit_email(username, headers):
-    """OSINT trick: Digs into the most recent commit to find hidden email addresses."""
-    repos_url = f"https://api.github.com/users/{username}/repos?sort=updated&per_page=1"
+    """Dual-Layer OSINT: Safely extracts hidden emails without the Fork Trap."""
+    
+    # --- LAYER 1: The Events Hack (Fastest) ---
+    events_url = f"https://api.github.com/users/{username}/events/public?per_page=10"
+    try:
+        resp = requests.get(events_url, headers=headers, timeout=5)
+        if resp.status_code == 200:
+            for event in resp.json():
+                if event['type'] == 'PushEvent':
+                    for commit in event.get('payload', {}).get('commits', []):
+                        email = commit.get('author', {}).get('email', '')
+                        if email and "noreply.github.com" not in email and "bot@" not in email:
+                            return email
+    except Exception: 
+        pass 
+
+    # --- LAYER 2: The Repo Deep-Dive (Strictly filtered by owner/author) ---
+    repos_url = f"https://api.github.com/users/{username}/repos?type=owner&sort=pushed&per_page=1"
     try:
         repo_resp = requests.get(repos_url, headers=headers, timeout=5)
-        if repo_resp.status_code != 200: return None
-        repos = repo_resp.json()
-        if not repos: return None
+        if repo_resp.status_code == 200 and repo_resp.json():
+            repo_name = repo_resp.json()[0]['name']
             
-        repo_name = repos[0]['name']
-        commits_url = f"https://api.github.com/repos/{username}/{repo_name}/commits?per_page=3"
-        
-        commit_resp = requests.get(commits_url, headers=headers, timeout=5)
-        if commit_resp.status_code != 200: return None
-        
-        for commit in commit_resp.json():
-            try:
-                email = commit['commit']['author']['email']
-                if "noreply.github.com" not in email and "bot@" not in email:
-                    return email 
-            except KeyError:
-                continue
-    except Exception: return None
+            commits_url = f"https://api.github.com/repos/{username}/{repo_name}/commits?author={username}&per_page=3"
+            commit_resp = requests.get(commits_url, headers=headers, timeout=5)
+            
+            if commit_resp.status_code == 200:
+                for commit in commit_resp.json():
+                    try:
+                        email = commit['commit']['author']['email']
+                        if email and "noreply.github.com" not in email and "bot@" not in email:
+                            return email 
+                    except KeyError: 
+                        continue
+    except Exception: 
+        pass
+
     return None
 
 def fetch_github_data_thread(builder_name, sheet_row_number, col_indices):
@@ -49,7 +64,6 @@ def fetch_github_data_thread(builder_name, sheet_row_number, col_indices):
     
     attempts = 0
     while attempts < 3:
-        # Pick a random token to distribute API load evenly
         token = random.choice(GITHUB_TOKENS)
         headers = {'Authorization': f'token {token}', 'Accept': 'application/vnd.github.v3+json'}
         url = f"https://api.github.com/users/{builder_name}"
@@ -59,7 +73,7 @@ def fetch_github_data_thread(builder_name, sheet_row_number, col_indices):
             
             if response.status_code in [403, 429]:
                 attempts += 1
-                time.sleep(1 + random.uniform(0, 1)) # Backoff jitter to prevent all threads stalling at once
+                time.sleep(1 + random.uniform(0, 1)) 
                 continue 
                 
             if response.status_code == 200:
@@ -69,7 +83,7 @@ def fetch_github_data_thread(builder_name, sheet_row_number, col_indices):
                 final_email = public_email if public_email else get_commit_email(builder_name, headers) or "Not public"
                 
                 if final_email != "Not public":
-                    log_msg = f"   🔓 Enriched: **{builder_name}** -> `{final_email}`"
+                    log_msg = f"   🔓 Hacked/Enriched: **{builder_name}** -> `{final_email}`"
                 
                 if col_idx_email: cells.append(gspread.Cell(sheet_row_number, col_idx_email, final_email))
                 if col_idx_twitter and user_data.get('twitter_username'): cells.append(gspread.Cell(sheet_row_number, col_idx_twitter, user_data.get('twitter_username')))
@@ -77,7 +91,7 @@ def fetch_github_data_thread(builder_name, sheet_row_number, col_indices):
                 if col_idx_company and user_data.get('company'): cells.append(gspread.Cell(sheet_row_number, col_idx_company, user_data.get('company')))
                 break 
             else:
-                break # 404 or missing user
+                break 
         except Exception:
             break
             
@@ -152,10 +166,8 @@ def enrich_database():
             
             # 2. THE CONCURRENT SWARM (Multithreading)
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                # Map the tasks to the workers
                 future_to_task = {executor.submit(fetch_github_data_thread, t[0], t[1], col_indices): t for t in tasks}
                 
-                # As each thread finishes instantly, process the result
                 for completed_count, future in enumerate(concurrent.futures.as_completed(future_to_task)):
                     progress_bar.progress(int(((completed_count + 1) / len(tasks)) * 100))
                     
