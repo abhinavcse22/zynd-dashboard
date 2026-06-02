@@ -20,6 +20,9 @@ def generate_zynd_pr(target_repo):
     try:
         original_repo = g.get_repo(target_repo)
         user = g.get_user()
+
+        if original_repo.archived:
+            return False, "Target repository is archived (read-only). Skipping to save API calls."
         
         # 🛑 SECURITY FIX 1: The 180-Day TTL Intent Check
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=180)
