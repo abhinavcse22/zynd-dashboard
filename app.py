@@ -128,7 +128,6 @@ def clean_database():
         "Issue Leads": "Username"
     }
 
-    # 2. Iterate through every sheet dynamically
     for tab_name, unique_key in cleaning_map.items():
         try:
             worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
@@ -139,28 +138,21 @@ def clean_database():
                 
             df = pd.DataFrame(data)
             
-            # Skip if the target column doesn't exist (prevents crashes)
+            # Skip if the target column doesn't exist
             if unique_key not in df.columns:
                 continue
 
             before_count = len(df)
-            
-            # Keep the first instance we found, drop all subsequent identical ones
             df.drop_duplicates(subset=[unique_key], keep='first', inplace=True)
             after_count = len(df)
 
             if before_count > after_count:
-                # SAFE OVERWRITE: Instead of clearing the whole sheet which risks data loss,
-                # we prepare the exact grid of data and update it in one solid block.
-                # (We still clear, but we do it right before a guaranteed payload)
                 payload = [df.columns.values.tolist()] + df.values.tolist()
                 worksheet.clear()
                 worksheet.update(payload)
-                
                 total_removed += (before_count - after_count)
                 
         except Exception as e:
-            # We log the error to the Streamlit UI instead of failing silently
             st.sidebar.warning(f"⚠️ Sweeper skipped '{tab_name}': {str(e)}")
             continue
 
@@ -193,7 +185,8 @@ with st.sidebar:
         "💻 GitHub Builders", 
         "💬 Reddit Intent", 
         "🐦 Twitter Sniper", 
-        "⚙️ Control Room"
+        "⚙️ Control Room",
+        "📚 System Documentation"
     ])
     st.markdown("---")
     st.info(f"🟢 **System Online**\n\nLast Sync: {st.session_state['last_sync_time']}")
@@ -222,15 +215,12 @@ if menu == "📈 Campaign Dashboard":
             crm_data = pd.DataFrame(sheet.worksheet("Master CRM").get_all_records())
             
             if not crm_data.empty:
-                # --- 🧹 DATA SANITIZATION ENGINE ---
-                # 1. Clean the Pipeline Statuses (Fixing the URL bug)
                 valid_statuses = ["Not Contacted", "Message 1 Sent", "Follow-Up 1 Sent", "Replied - Interested", "Replied - Pass", "DO NOT CONTACT 🛑"]
                 if 'Status' in crm_data.columns:
                     crm_data['Clean_Status'] = crm_data['Status'].apply(lambda x: x if x in valid_statuses else "Not Contacted")
                 else:
                     crm_data['Clean_Status'] = "Not Contacted"
                     
-                # 2. Clean the Sources (Grouping them neatly)
                 def clean_source(src):
                     src = str(src).lower()
                     if 'reddit' in src or 'pain point' in src or 'deep engine' in src: return 'Reddit'
@@ -245,7 +235,6 @@ if menu == "📈 Campaign Dashboard":
                 else:
                     crm_data['Clean_Source'] = "Unknown"
 
-                # --- 📊 TOP METRICS ---
                 col1, col2, col3 = st.columns(3)
                 
                 total_extracted = len(crm_data)
@@ -259,9 +248,8 @@ if menu == "📈 Campaign Dashboard":
                 with col3:
                     st.metric("Engagement Rate", f"{engagement_rate}%")
                 
-                st.markdown("<br>", unsafe_allow_html=True) # Adds breathing room
+                st.markdown("<br>", unsafe_allow_html=True) 
                 
-                # --- 🎨 BEAUTIFIED CHARTS ---
                 chart_col1, chart_col2 = st.columns(2)
                 
                 with chart_col1:
@@ -269,7 +257,6 @@ if menu == "📈 Campaign Dashboard":
                     source_counts = crm_data['Clean_Source'].value_counts().reset_index()
                     source_counts.columns = ['Source', 'Count']
                     
-                    # Donut chart with no messy legend, labels inside
                     fig_source = px.pie(
                         source_counts, values='Count', names='Source', hole=0.5,
                         template="plotly_dark",
@@ -284,7 +271,6 @@ if menu == "📈 Campaign Dashboard":
                     status_counts = crm_data['Clean_Status'].value_counts().reset_index()
                     status_counts.columns = ['Status', 'Count']
                     
-                    # Clean bar chart with angled text
                     fig_status = px.bar(
                         status_counts, x='Status', y='Count', color='Status',
                         template="plotly_dark",
@@ -294,7 +280,7 @@ if menu == "📈 Campaign Dashboard":
                         xaxis_title="", yaxis_title="Number of Leads",
                         showlegend=False, margin=dict(t=20, b=20, l=20, r=20),
                         paper_bgcolor="rgba(0,0,0,0)",
-                        xaxis=dict(tickangle=-45) # Angles the text so it doesn't overlap
+                        xaxis=dict(tickangle=-45) 
                     )
                     st.plotly_chart(fig_status, use_container_width=True)
             else:
@@ -328,7 +314,6 @@ elif menu == "📈 Pipeline Overview":
 
     st.divider()
     
-    # --- NEW: CRM ROUTING ENGINE ---
     st.subheader("🗄️ Automated CRM Router")
     router_col1, router_col2 = st.columns(2)
     
@@ -337,12 +322,10 @@ elif menu == "📈 Pipeline Overview":
         if st.button("🔄 Execute Round-Robin Auto-Assignment", use_container_width=True):
             with st.spinner("Routing leads & checking DNC firewall..."):
                 import zynd_pipeline_manager
-                # Step 1: Secure the DNC list
                 dnc_count = zynd_pipeline_manager.enforce_dnc_list()
                 if dnc_count > 0:
                     st.warning(f"🛑 Moved {dnc_count} opted-out developers to the DNC Vault.")
                 
-                # Step 2: Distribute the rest
                 assigned_count = zynd_pipeline_manager.auto_assign_leads()
                 st.success(f"✅ Auto-assigned {assigned_count} fresh leads across the team.")
 
@@ -441,7 +424,10 @@ elif menu == "💻 GitHub Builders":
                 st.download_button(label="📥 Export GitHub Leads", data=filtered_gh.to_csv(index=False).encode('utf-8'), file_name='zynd_github_leads.csv', mime='text/csv')
         with col_osint:
             if st.button("🔍 Run OSINT Email Enrichment (Batch)", type="secondary"):
-                st.success("OSINT Enrichment Engine engaged. Scanning public commits for email addresses...")
+                with st.spinner("Executing Database Enricher..."):
+                    import zynd_master_scraper
+                    zynd_master_scraper.enrich_database()
+                    st.success("OSINT Enrichment Complete. Data updated in background.")
 
 # ==========================================
 # 💬 TAB: REDDIT INTENT
@@ -483,7 +469,6 @@ elif menu == "⚙️ Control Room":
     st.header("🎛️ Advanced Operations Command Console")
     st.write("Deploy extraction scripts, dispatch AI payloads, and optimize the live database.")
     
-    # Categorized Operational Sub-Tabs
     ctrl_tab1, ctrl_tab2, ctrl_tab3, ctrl_tab4, ctrl_tab5 = st.tabs([
         "🕵️‍♂️ Operation Scrapers", 
         "🏴‍☠️ Codebase Infiltration", 
@@ -548,22 +533,8 @@ elif menu == "⚙️ Control Room":
         st.markdown("### 🌐 Structural Aggregators & Workarounds")
         with st.container(border=True):
             st.write("Bypass standard browser blocks and mine niche lists or weekend hacks.")
-            dork_sub1, dork_sub2, dork_sub3 = st.columns(3)
+            dork_sub1, dork_sub2 = st.columns(2)
             with dork_sub1:
-                st.markdown("#### 🏴‍☠️ Zero-Cost Deep OSINT")
-                dork_mission = st.selectbox("Extraction Mission", ["Bio/Profile Scraper (Replaces Follower Stealer)", "Complaint Scraper (Replaces No-Code Finder)"], key="ds_mission")
-                dork_target = st.text_input("Target Competitor / Tool", placeholder="Zapier", key="ds_target")
-                dork_platform = st.selectbox("Target Platform", ["twitter.com", "linkedin.com/in", "reddit.com"], key="ds_plat")
-                dork_count = st.slider("Leads to Extract", 5, 50, 25, key="ds_count")
-                if st.button("Execute Zero-Cost Heist 🕵️‍♂️", type="primary", use_container_width=True):
-                    if dork_target:
-                        with st.spinner(f"Simulating pipeline extraction..."):
-                            import zynd_dork_engine
-                            results, count = zynd_dork_engine.run_zero_cost_extraction(dork_target, dork_platform, dork_mission, dork_count)
-                            st.success(f"Pipeline Simulated! {count} traces logged.")
-                            st.dataframe(results, use_container_width=True)
-                    else: st.warning("Enter target name.")
-            with dork_sub2:
                 st.markdown("#### 🗂️ AI Directory Scanner")
                 target_directory = st.text_input("Awesome List Repo", placeholder="e2b-dev/awesome-ai-agents")
                 if st.button("Scan Directory 🔍", use_container_width=True):
@@ -575,7 +546,7 @@ elif menu == "⚙️ Control Room":
                                 st.success(f"Extracted {len(projects)} directory entries.")
                                 st.dataframe(projects, use_container_width=True)
                             else: st.warning(status)
-            with dork_sub3:
+            with dork_sub2:
                 st.markdown("#### 🍕 Hackathon Finder")
                 hack_query = st.text_input("Hack Search Query", value="hackathon AI agent")
                 num_projects = st.number_input("Scan Limit", 10, 50, 30)
@@ -764,7 +735,7 @@ elif menu == "⚙️ Control Room":
 
         st.markdown("### 🎙️ The Zynd Media Empire Content Hub")
         with st.container(border=True):
-            media_t1, media_t2, media_t3 = st.tabs(["🚀 Market Hijacker", "🧑‍💻 Build in Public", "⚙️ Auto Git-to-Social"])
+            media_t1, media_t2, media_t3, media_t4 = st.tabs(["🚀 Market Hijacker", "🧑‍💻 Build in Public", "⚙️ Auto Git-to-Social", "⚔️ Competitor Radar"])
             with media_t1:
                 targets = st.text_input("Competitors Matrix", "LangChain, CrewAI", key="med_targ")
                 if st.button("Generate Market-Informed Content 🌐", use_container_width=True):
@@ -790,8 +761,7 @@ elif menu == "⚙️ Control Room":
                             data, status = zynd_git_social.fetch_latest_commit_and_post(my_repo)
                             if data: st.success("Pushed update logged!"); st.code(data['post'])
                             else: st.error(status)
-                                
-            with media_t4 if 'media_t4' in locals() else media_t1: # Fallback or clean addition
+            with media_t4:
                 st.markdown("#### ⚔️ Real-Time Competitor Infiltration Matrix")
                 st.write("Scan competitor landing pages or code wrappers, identify feature shifts, and auto-build counter messaging blueprints.")
                 
@@ -834,9 +804,23 @@ elif menu == "⚙️ Control Room":
                         import zynd_crm_engine
                         col_index_map = {"Telegram Leads": 1, "Reddit Leads": 0, "Twitter Leads": 0, "Fork Sniper Leads": 0, "Influencer Leads": 1}
                         success, msg = zynd_crm_engine.update_lead_status(db_target, col_index_map[db_target], lead_target, assignee, lead_status, str(follow_up))
-                        if success: st.success(msg); st.cache_data.clear()
-                        else: st
-
+                        if success: 
+                            st.success(msg)
+                            st.cache_data.clear()
+                        else: 
+                            st.error(msg)
+                        
+        st.divider()
+        st.markdown("### 🧹 Database Integrity Engine")
+        st.write("Scan all database partitions and purge duplicate records to prevent system bloat.")
+        if st.button("Run Master Deduplication Sweep 🧹", use_container_width=True):
+            with st.spinner("Scanning database records for duplicates..."):
+                removed_count = clean_database()
+                if removed_count > 0:
+                    st.success(f"Sweep complete! Purged {removed_count} duplicate records from the ecosystem.")
+                    st.cache_data.clear()
+                else:
+                    st.info("Database is clean. No duplicate records found.")
         
         st.divider()
         st.markdown("### 🎥 Influencer Campaign Matrix")
@@ -896,74 +880,142 @@ elif menu == "⚙️ Control Room":
 # 📚 TAB: SYSTEM GUIDE & DOCUMENTATION
 # ==========================================
 elif menu == "📚 System Documentation":
-    st.header("Zynd OS: Master Documentation & Playbook")
-    st.write("Welcome to the Zynd Enterprise Go-To-Market Operating System. This guide provides complete operational parameters.")
+    st.header("📚 Zynd OS: Master Playbook & Documentation")
+    st.write("Complete operational guides, feature breakdowns, and navigation paths for your Go-To-Market machine.")
 
-    doc_t1, doc_t2, doc_t3, doc_t4 = st.tabs([
-        "⚙️ Feature Overview", 
-        "🗺️ Architecture Maps", 
-        "🚀 Step-by-Step Playbooks", 
-        "🛠️ Troubleshooting & Admin"
+    doc_t1, doc_t2, doc_t3 = st.tabs([
+        "🕵️‍♂️ Phase 1: Lead Harvesting & OSINT", 
+        "🗄️ Phase 2: CRM Routing & Enrichment", 
+        "🤖 Phase 3: AI Payloads & Content"
     ])
 
+    # --- PHASE 1: LEAD HARVESTING ---
     with doc_t1:
-        st.subheader("Feature Overview & Navigation Shortcuts")
-        st.markdown("""
-        *   **[📈 Campaign Dashboard]**: Real-time telemetry, lead volume, and conversion rates across all sources.
-        *   **[📈 Pipeline Overview]**: High-level action center. Run the `CRM Router` here to auto-assign leads and check Follow-Up Radars.
-        *   **[💻 GitHub Builders]**: Filter and export technical leads (Stargazers, Fork Snipers). Contains the Batch OSINT Enrichment button.
-        *   **[⚙️ Control Room]**: The central command interface.
-            *   *Codebase Infiltration*: Run Stargazer, Fork, Issue, and Contributor snipers.
-            *   *Community Signals*: Run Discord/Slack extraction and Telegram Ghost protocols.
-            *   *AI Payload Deployers*: Launch Autonomous PR campaigns, generate Outreach Sequences, and draft social content.
-        """)
-
-    with doc_t2:
-        st.subheader("System Integrations & Architecture Map")
-        st.markdown("""
-        **1. Database Layer (Google Sheets)**
-        *   *Master Relational DB*: Controlled via Service Accounts. Acts as the permanent ledger.
-        *   *Data Safeguards*: Deduplication protocols run on URL/Username constraints prior to grid updates.
-
-        **2. GitHub Vector Network**
-        *   *Scraping/OSINT Token Pool*: 3 distinct tokens (`st.secrets["github"]["tokens"]`) rotated to bypass REST API limits.
-        *   *Auto-PR Token*: 1 isolated token (`st.secrets["ZYND_PR_TOKEN"]`) specifically authorized for payload injection and repository manipulation.
-
-        **3. AI Intelligence Layer**
-        *   *OpenRouter API*: Powers all generative workflows (Cold Emails, Use Cases, Content Hub) with strict fallback parameters to prevent UI JSON crashes.
-        """)
-
-    with doc_t3:
-        st.subheader("Standard Operating Procedures (SOPs)")
+        st.subheader("Phase 1: Finding High-Intent Builders")
+        st.write("These tools scrape the web for developers building AI agents, Web3 infrastructure, or complaining about competitors.")
         
-        with st.expander("SOP 1: Daily Outreach Generation (The 180-Day Method)"):
+        with st.expander("1. GitHub Stargazer Radar (High Intent)", expanded=True):
             st.markdown("""
-            1. Navigate to **Control Room > Operation Scrapers**.
-            2. Execute the **GitHub Harvester** and **Reddit Radar**.
-            3. Go to **Control Room > Database & CRM**.
-            4. Click **Execute Round-Robin Auto-Assignment** to distribute the fresh leads.
-            5. Go to **Control Room > AI Payload Deployers**.
-            6. Use the **Pro AI Drafter** to generate localized 3-step outreach sequences based on the fresh data.
+            **What it does:** Scans competitors (like LangChain or CrewAI), pulls all users who recently "starred" their repo, evaluates their bio for keywords, and scores them 1-10. Enforces a strict 180-day activity wall.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🏴‍☠️ Codebase Infiltration`**
+            2. Enter target repos (e.g., `langchain-ai/langchain`).
+            3. Set your cut-off score (recommend 5+).
+            4. Click **Run Stargazer Radar**.
+            5. View results in: **`💻 GitHub Builders`** ➡️ **`🔭 Stargazer Radar`**.
+            """)
+
+        with st.expander("2. GitHub Fork Sniper"):
+            st.markdown("""
+            **What it does:** Finds users who actively clicked "Fork" on a competitor's repo to build their own custom version locally. Runs a deep OSINT check to find hidden commit emails.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🏴‍☠️ Codebase Infiltration`**
+            2. Enter the target blueprint (e.g., `crewAIInc/crewAI`).
+            3. Click **Snipe Competitor Forks**.
+            4. View results in: **`💻 GitHub Builders`** ➡️ **`🎯 Fork Sniped Leads`**.
+            """)
+
+        with st.expander("3. Reddit & Twitter Intent Radars"):
+            st.markdown("""
+            **What it does:** Monitors social feeds for specific pain points (e.g., "CrewAI is stuck", "LangGraph error"). 
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🕵️‍♂️ Operation Scrapers`**
+            2. Click **Start Reddit Engine** or **Start Twitter Engine**.
+            3. View Reddit results in: **`💬 Reddit Intent`** tab.
+            4. View Twitter results in: **`🐦 Twitter Sniper`** tab.
             """)
             
-        with st.expander("SOP 2: Executing an Autonomous PR Campaign"):
+        with st.expander("4. The Creator Engine (YouTube)"):
             st.markdown("""
-            1. Ensure your `ZYND_PR_TOKEN` is active and has full repository permissions.
-            2. Navigate to **Control Room > AI Payload Deployers**.
-            3. Under **The Auto-PR Payload Engine**, input your Target Keyword (e.g., `ai-agents`).
-            4. Set the PR Limit (Keep under 10 per day to protect account standing).
-            5. Click **Launch Autonomous Campaign**. The system will automatically fork, branch, patch, and submit PRs with anti-ban delays.
+            **What it does:** Finds technical micro-influencers (500 to 100k subs) making tutorials about your competitors, allowing you to sponsor them or get them to feature Zynd.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`💬 Community Signals`**
+            2. Enter a niche query (e.g., `LangChain tutorial`).
+            3. Click **Hunt Creators**. Leads are saved to the `Influencer Leads` Google Sheet tab.
             """)
 
-    with doc_t4:
-        st.subheader("Admin Maintenance & Troubleshooting")
-        st.markdown("""
-        | Issue | Cause | Administrative Solution |
-        | :--- | :--- | :--- |
-        | **429 Too Many Requests** | GitHub Token Limits | The system is waiting for the `retry-after` header. Wait 60 seconds and rerun. |
-        | **JSONDecodeError** | OpenRouter API Timeout | The LLM failed to return a complete payload. Check OpenRouter balance or switch models. |
-        | **Empty DataFrame Error** | Google Sheet Tab Missing | The OSINT script attempted to write to a tab that doesn't exist. Recreate the specific tab in your Master CRM. |
-        | **Telegram Session Invalid** | Expired String Session | Re-run the local Telethon authorization script to generate a new `session_string` and update Streamlit secrets. |
-        """)
+    # --- PHASE 2: CRM & ENRICHMENT ---
+    with doc_t2:
+        st.subheader("Phase 2: Data Maturation & Team Assignment")
+        st.write("Tools to find missing emails, distribute leads to the team, and track your funnel.")
         
-        st.info("💡 **Admin Note:** Always ensure the 180-Day TTL (Time-To-Live) constraints are active. Messaging developers whose last commit was over 6 months ago damages domain reputation.")
+        with st.expander("1. Master OSINT Enricher (Email Finder)", expanded=True):
+            st.markdown("""
+            **What it does:** Deploys a 5-thread worker swarm to re-scan your database. If a lead doesn't have an email, it hacks their public GitHub commit logs to extract the hidden email address.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🕵️‍♂️ Operation Scrapers`**
+            2. Click **Engage Turbo Scraper**. It will run in the background and update Google Sheets automatically.
+            """)
+
+        with st.expander("2. Automated CRM Router (Round-Robin)"):
+            st.markdown("""
+            **What it does:** Enforces your "Do Not Contact" (DNC) list, then takes all fresh, unassigned leads and splits them evenly between you and your Co-Founder.
+            
+            **How to use it:**
+            1. Navigate to: **`📈 Pipeline Overview`**
+            2. Scroll down to **🗄️ Automated CRM Router**.
+            3. Click **Execute Round-Robin Auto-Assignment**.
+            """)
+
+        with st.expander("3. Database Integrity Engine"):
+            st.markdown("""
+            **What it does:** Sweeps every single tab in your Google Sheets database and deletes any accidental duplicate records to keep your CRM clean and fast.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🗄️ Database & CRM`**
+            2. Scroll down to **🧹 Database Integrity Engine**.
+            3. Click **Run Master Deduplication Sweep 🧹**.
+            """)
+
+        with st.expander("4. Outreach History Ledger"):
+            st.markdown("""
+            **What it does:** An immutable log of every DM, PR, or Email sent. Prevents you and your Co-Founder from accidentally messaging the same developer twice.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🗄️ Database & CRM`**
+            2. Scroll down to **Outreach History Ledger**.
+            3. Input the lead identifier, platform, and paste the message sent, then click **Log Outreach Event**.
+            """)
+
+    # --- PHASE 3: AI PAYLOADS ---
+    with doc_t3:
+        st.subheader("Phase 3: Automated Outbound & Marketing")
+        st.write("Deploy AI agents to write code, submit PRs, and generate social content.")
+        
+        with st.expander("1. Autonomous Auto-PR Campaigner", expanded=True):
+            st.markdown("""
+            **What it does:** Searches GitHub for new AI agents, automatically forks their repo, writes a `zynd_wrapper.py` monetization patch, and submits a Pull Request to the builder while you sleep.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🧠 AI Payload Deployers`**
+            2. Enter a target keyword (e.g., `ai-agent`).
+            3. Set the PR limit (Keep this low, 5-10 max per day, to avoid GitHub bans).
+            4. Click **Launch Autonomous Campaign**.
+            """)
+
+        with st.expander("2. Pro AI Drafter (Cold Outreach)"):
+            st.markdown("""
+            **What it does:** Reads a developer's bio, their recent complaints, and their tech stack, then generates a highly technical 3-step outreach sequence (Initial, Value Add, Breakup).
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🧠 AI Payload Deployers`**
+            2. Look for **Pro AI Drafter**.
+            3. Select a lead directly from the database dropdown, or manually paste their bio.
+            4. Click **Generate Outreach Sequence**.
+            """)
+
+        with st.expander("3. Competitor Infiltration Matrix"):
+            st.markdown("""
+            **What it does:** Scrapes a competitor's live website (e.g., crewai.com). If it detects a new feature launch or text change, it commands OpenRouter to instantly write a counter-positioning social media post.
+            
+            **How to use it:**
+            1. Navigate to: **`⚙️ Control Room`** ➡️ **`🧠 AI Payload Deployers`**
+            2. Select the **⚔️ Competitor Radar** tab.
+            3. Input the competitor name and URL.
+            4. Click **Scan and Intercept Competitor Vector**.
+            """)
