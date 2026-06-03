@@ -891,3 +891,79 @@ elif menu == "⚙️ Control Room":
                         else: st.error(msg)
                 else:
                     st.warning("A Lead Identifier is required to log an event.")
+
+# ==========================================
+# 📚 TAB: SYSTEM GUIDE & DOCUMENTATION
+# ==========================================
+elif menu == "📚 System Documentation":
+    st.header("Zynd OS: Master Documentation & Playbook")
+    st.write("Welcome to the Zynd Enterprise Go-To-Market Operating System. This guide provides complete operational parameters.")
+
+    doc_t1, doc_t2, doc_t3, doc_t4 = st.tabs([
+        "⚙️ Feature Overview", 
+        "🗺️ Architecture Maps", 
+        "🚀 Step-by-Step Playbooks", 
+        "🛠️ Troubleshooting & Admin"
+    ])
+
+    with doc_t1:
+        st.subheader("Feature Overview & Navigation Shortcuts")
+        st.markdown("""
+        *   **[📈 Campaign Dashboard]**: Real-time telemetry, lead volume, and conversion rates across all sources.
+        *   **[📈 Pipeline Overview]**: High-level action center. Run the `CRM Router` here to auto-assign leads and check Follow-Up Radars.
+        *   **[💻 GitHub Builders]**: Filter and export technical leads (Stargazers, Fork Snipers). Contains the Batch OSINT Enrichment button.
+        *   **[⚙️ Control Room]**: The central command interface.
+            *   *Codebase Infiltration*: Run Stargazer, Fork, Issue, and Contributor snipers.
+            *   *Community Signals*: Run Discord/Slack extraction and Telegram Ghost protocols.
+            *   *AI Payload Deployers*: Launch Autonomous PR campaigns, generate Outreach Sequences, and draft social content.
+        """)
+
+    with doc_t2:
+        st.subheader("System Integrations & Architecture Map")
+        st.markdown("""
+        **1. Database Layer (Google Sheets)**
+        *   *Master Relational DB*: Controlled via Service Accounts. Acts as the permanent ledger.
+        *   *Data Safeguards*: Deduplication protocols run on URL/Username constraints prior to grid updates.
+
+        **2. GitHub Vector Network**
+        *   *Scraping/OSINT Token Pool*: 3 distinct tokens (`st.secrets["github"]["tokens"]`) rotated to bypass REST API limits.
+        *   *Auto-PR Token*: 1 isolated token (`st.secrets["ZYND_PR_TOKEN"]`) specifically authorized for payload injection and repository manipulation.
+
+        **3. AI Intelligence Layer**
+        *   *OpenRouter API*: Powers all generative workflows (Cold Emails, Use Cases, Content Hub) with strict fallback parameters to prevent UI JSON crashes.
+        """)
+
+    with doc_t3:
+        st.subheader("Standard Operating Procedures (SOPs)")
+        
+        with st.expander("SOP 1: Daily Outreach Generation (The 180-Day Method)"):
+            st.markdown("""
+            1. Navigate to **Control Room > Operation Scrapers**.
+            2. Execute the **GitHub Harvester** and **Reddit Radar**.
+            3. Go to **Control Room > Database & CRM**.
+            4. Click **Execute Round-Robin Auto-Assignment** to distribute the fresh leads.
+            5. Go to **Control Room > AI Payload Deployers**.
+            6. Use the **Pro AI Drafter** to generate localized 3-step outreach sequences based on the fresh data.
+            """)
+            
+        with st.expander("SOP 2: Executing an Autonomous PR Campaign"):
+            st.markdown("""
+            1. Ensure your `ZYND_PR_TOKEN` is active and has full repository permissions.
+            2. Navigate to **Control Room > AI Payload Deployers**.
+            3. Under **The Auto-PR Payload Engine**, input your Target Keyword (e.g., `ai-agents`).
+            4. Set the PR Limit (Keep under 10 per day to protect account standing).
+            5. Click **Launch Autonomous Campaign**. The system will automatically fork, branch, patch, and submit PRs with anti-ban delays.
+            """)
+
+    with doc_t4:
+        st.subheader("Admin Maintenance & Troubleshooting")
+        st.markdown("""
+        | Issue | Cause | Administrative Solution |
+        | :--- | :--- | :--- |
+        | **429 Too Many Requests** | GitHub Token Limits | The system is waiting for the `retry-after` header. Wait 60 seconds and rerun. |
+        | **JSONDecodeError** | OpenRouter API Timeout | The LLM failed to return a complete payload. Check OpenRouter balance or switch models. |
+        | **Empty DataFrame Error** | Google Sheet Tab Missing | The OSINT script attempted to write to a tab that doesn't exist. Recreate the specific tab in your Master CRM. |
+        | **Telegram Session Invalid** | Expired String Session | Re-run the local Telethon authorization script to generate a new `session_string` and update Streamlit secrets. |
+        """)
+        
+        st.info("💡 **Admin Note:** Always ensure the 180-Day TTL (Time-To-Live) constraints are active. Messaging developers whose last commit was over 6 months ago damages domain reputation.")
