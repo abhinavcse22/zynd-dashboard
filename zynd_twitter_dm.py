@@ -4,6 +4,7 @@ import requests
 import time
 import random
 import shutil
+import os
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- SELENIUM STEALTH IMPORTS ---
@@ -132,11 +133,8 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         for idx, row in enumerate(records):
             if dms_fired >= max_dms: break
                 
-            # ADAPTIVE FIX: Catch the misaligned headers from the Google Sheet
-            # The handle is sitting under "Tweet URL" and the text is under "Unnamed_6"
             raw_handle = str(row.get("Tweet URL", row.get("Username", row.get("handle", row.get("User", ""))))).strip()
             
-            # Fallback URL extraction just in case
             if not raw_handle or "http" in raw_handle:
                 url = str(row.get("Content", row.get("Profile URL", row.get("User URL", row.get("Post URL", "")))))
                 if "x.com/" in url or "twitter.com/" in url:
@@ -148,14 +146,11 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                             
             handle = raw_handle.replace("@", "").split("?")[0].strip()
             
-            # Safety check to ensure we aren't trying to message a URL
             if not handle or "http" in handle:
                 skipped_no_handle += 1
                 continue
                 
             status = str(row.get("outreach_status", "Pending")).strip()
-            
-            # ADAPTIVE FIX: The tweet text is in the 7th column (Unnamed_6)
             bio = str(row.get("Unnamed_6", row.get("bio", str(row.get("Content", ""))))).strip()
             
             if status in ["DM Sent", "DO NOT CONTACT 🛑", "DMs Closed / Failed"]:
@@ -175,12 +170,28 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             if status_container: status_container.warning(f"Navigating to @{handle}'s inbox...")
             
             driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
-            time.sleep(random.uniform(5.5, 8.2)) 
+            time.sleep(random.uniform(7.5, 10.2)) # Increased wait time to let React load fully
             
             try:
-                message_box = WebDriverWait(driver, 15).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="dmComposerTextInput"]'))
-                )
+                # We use multiple fallback selectors just in case Twitter changes their code
+                selectors = [
+                    'div[data-testid="dmComposerTextInput"]',
+                    'div[data-testid="tweetTextarea_0"]',
+                    'div[aria-label="Start a new message"]'
+                ]
+                
+                message_box = None
+                for selector in selectors:
+                    try:
+                        message_box = WebDriverWait(driver, 5).until(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                        )
+                        if message_box: break
+                    except:
+                        pass
+                
+                if not message_box:
+                    raise Exception("Message input box not found in DOM.")
                 
                 for char in message:
                     message_box.send_keys(char)
@@ -206,7 +217,14 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                     time.sleep(delay)
                     
             except Exception as e:
-                if status_container: status_container.error(f"Could not message @{handle}. Their DMs might be closed.")
+                # X-RAY DEBUGGER: Take a screenshot of the failure
+                screenshot_path = f"debug_twitter_{handle}.png"
+                driver.save_screenshot(screenshot_path)
+                
+                if status_container: 
+                    status_container.error(f"Could not message @{handle}. See screenshot below for what the bot saw.")
+                    st.image(screenshot_path, caption=f"Bot's view of x.com/messages/compose?recipient_id={handle}")
+                    
                 if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "DMs Closed / Failed")
                 time.sleep(5)
                 
@@ -218,6 +236,6 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             driver.quit() 
             
     if dms_fired == 0:
-        return 0, f"0 DMs sent. Skipped {skipped_no_handle} leads missing valid handles. Skipped {skipped_status} already contacted/closed."
+        return 0, f"0 DMs sent. Skipped {skipped_no_handle} missing handles. Skipped {skipped_status} already contacted."
         
     return dms_fired, f"Twitter automation cycle concluded. Sent {dms_fired} messages."
