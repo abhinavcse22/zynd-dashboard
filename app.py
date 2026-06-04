@@ -867,6 +867,26 @@ elif menu == "⚙️ Control Room":
                             st.cache_data.clear()
                         else:
                             st.warning(msg)
+
+            with st.container(border=True):
+                st.subheader("🐦 Stealth Twitter DM Autopilot")
+                st.write("Boot a headless cloud browser to bypass API limits and fire AI-drafted DMs.")
+                
+                twitter_cap = st.slider("Max DMs (Keep under 10/day)", 1, 15, 3, key="twitter_cap")
+                tw_status = st.empty()
+                
+                if st.button("🚀 Engage Twitter Autopilot", use_container_width=True):
+                    with st.spinner("Initializing Linux Chromium instance... Do not close tab."):
+                        import zynd_twitter_dm
+                        sent, msg = zynd_twitter_dm.dispatch_twitter_dms(max_dms=twitter_cap, status_container=tw_status)
+                        
+                        tw_status.empty()
+                        if sent > 0:
+                            st.success(f"Successfully injected {sent} DMs via Stealth Browser.")
+                            st.info(msg)
+                            st.cache_data.clear()
+                        else:
+                            st.error(msg)
                                 
         with ai_col2:
             with st.container(border=True):
