@@ -3,6 +3,7 @@ import gspread
 import requests
 import time
 import random
+import shutil
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- SELENIUM STEALTH IMPORTS ---
@@ -18,7 +19,6 @@ from selenium.webdriver.common.keys import Keys
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def generate_twitter_dm(prospect_name, bio):
-    """Hits OpenRouter to craft a very short, highly casual Twitter DM."""
     headers = {
         "Authorization": f"Bearer {st.secrets['openrouter']['api_key']}",
         "Content-Type": "application/json"
@@ -52,8 +52,6 @@ def generate_twitter_dm(prospect_name, bio):
         return None
 
 def setup_stealth_browser():
-    """Configures a headless Chromium instance to bypass bot detection on Linux."""
-    import shutil
     options = Options()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -61,37 +59,29 @@ def setup_stealth_browser():
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     
-    # Spoof a standard residential Mac/Chrome user agent
     options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     
-    # Strip automation flags
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
 
-    # --- STREAMLIT CLOUD LINUX BYPASS ---
-    # Look for the native Chromium installed via packages.txt to prevent webdriver_manager crashes
     system_chromedriver = shutil.which("chromedriver")
     system_chromium = shutil.which("chromium") or shutil.which("chromium-browser")
 
     if system_chromedriver:
-        # We are running on the Cloud
         if system_chromium:
             options.binary_location = system_chromium
         service = Service(executable_path=system_chromedriver)
         driver = webdriver.Chrome(service=service, options=options)
     else:
-        # Fallback just in case you run this locally on your Mac
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
-    # Execute JS to hide WebDriver footprint
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    
     return driver
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
     if "twitter" not in st.secrets or "auth_token" not in st.secrets["twitter"]:
-        return 0, "Error: [twitter] auth_token secret is missing."
+        return 0, "Error: [twitter] auth_token secret is missing from Streamlit Cloud."
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -104,7 +94,6 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         if not raw_data or len(raw_data) < 2:
             return 0, "No leads found in the database."
             
-        # --- FIX: Manual Header Parsing to bypass duplicate/empty column names ---
         headers = raw_data[0]
         cleaned_headers = []
         for idx, h in enumerate(headers):
@@ -123,13 +112,14 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         return 0, f"Database Error: {str(e)}"
         
     dms_fired = 0
+    skipped_no_handle = 0
+    skipped_status = 0
     driver = None
     
     try:
         if status_container: status_container.warning("Booting headless stealth browser...")
         driver = setup_stealth_browser()
         
-        # INJECT COOKIE BYPASS
         driver.get("https://x.com/robots.txt") 
         driver.add_cookie({
             'name': 'auth_token',
@@ -142,20 +132,32 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         for idx, row in enumerate(records):
             if dms_fired >= max_dms: break
                 
-            # Handle Twitter handles formatted differently
-            raw_handle = str(row.get("handle", "")).strip()
-            # If your Twitter scraper calls it something else (like "Profile URL"), grab the handle from the end
-            if not raw_handle and "Profile URL" in row:
-                raw_handle = str(row.get("Profile URL", "")).split("/")[-1].strip()
-                
-            handle = raw_handle.replace("@", "").strip()
-            status = str(row.get("outreach_status", "Pending")).strip()
-            bio = str(row.get("bio", "")).strip()
+            # ULTRA-RESILIENT HANDLE FINDER
+            raw_handle = str(row.get("Username", row.get("handle", row.get("User", "")))).strip()
             
-            if not handle or status in ["DM Sent", "DO NOT CONTACT 🛑", "DMs Closed / Failed"]:
+            if not raw_handle:
+                url = str(row.get("Profile URL", row.get("User URL", row.get("Post URL", ""))))
+                if "x.com/" in url or "twitter.com/" in url:
+                    # Extract handle from a URL like https://x.com/elonmusk/status/123
+                    parts = url.split("/")
+                    for i, p in enumerate(parts):
+                        if p in ["x.com", "twitter.com"] and i + 1 < len(parts):
+                            raw_handle = parts[i + 1]
+                            break
+                            
+            handle = raw_handle.replace("@", "").split("?")[0].strip()
+            
+            if not handle:
+                skipped_no_handle += 1
                 continue
                 
-            # --- MESSAGE GENERATION ---
+            status = str(row.get("outreach_status", "Pending")).strip()
+            bio = str(row.get("bio", str(row.get("Content", "")))).strip()
+            
+            if status in ["DM Sent", "DO NOT CONTACT 🛑", "DMs Closed / Failed"]:
+                skipped_status += 1
+                continue
+                
             if mode == "✍️ Custom Template":
                 if status_container: status_container.info(f"Applying custom template for @{handle}...")
                 message = custom_msg.replace("{name}", handle).replace("{bio}", bio)
@@ -176,7 +178,6 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                     EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="dmComposerTextInput"]'))
                 )
                 
-                # Human-like typing delay
                 for char in message:
                     message_box.send_keys(char)
                     time.sleep(random.uniform(0.02, 0.08))
@@ -212,4 +213,7 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         if driver:
             driver.quit() 
             
-    return dms_fired, "Twitter automation cycle concluded."
+    if dms_fired == 0:
+        return 0, f"0 DMs sent. Skipped {skipped_no_handle} leads missing valid handles. Skipped {skipped_status} already contacted/closed."
+        
+    return dms_fired, f"Twitter automation cycle concluded. Sent {dms_fired} messages."
