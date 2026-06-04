@@ -821,6 +821,20 @@ elif menu == "⚙️ Control Room":
                     st.cache_data.clear()
                 else:
                     st.info("Database is clean. No duplicate records found.")
+
+
+        st.divider()
+        st.markdown("### 🎯 Global Intent Scorer")
+        st.write("Scan all leads and assign a 0-100 score based on competitor mentions and high-value actions (forking, complaining).")
+        if st.button("Calculate Competitor Intent Scores 🧠", use_container_width=True):
+            with st.spinner("Aggregating cross-platform interactions..."):
+                import zynd_intent_scorer
+                scored_count = zynd_intent_scorer.run_global_intent_scoring()
+                if scored_count > 0:
+                    st.success(f"Scoring Complete! Assigned weighted priority to {scored_count} fresh leads.")
+                    st.cache_data.clear()
+                else:
+                    st.info("All leads have already been scored.")
         
         st.divider()
         st.markdown("### 🎥 Influencer Campaign Matrix")
