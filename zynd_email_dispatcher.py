@@ -50,8 +50,7 @@ def generate_personalized_payload(prospect_name, context_signal, bio):
             ai_text = response.json()['choices'][0]['message']['content']
             
             # Clean up potential markdown blocks from the LLM
-            ai_text = ai_text.replace("```text", "").replace("
-```", "").strip()
+            ai_text = ai_text.replace("```text", "").replace("```", "").strip()
             
             if "SUBJECT:" in ai_text and "BODY:" in ai_text:
                 subject = ai_text.split("SUBJECT:")[1].split("BODY:")[0].strip()
