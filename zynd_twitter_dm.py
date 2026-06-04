@@ -75,7 +75,7 @@ def setup_stealth_browser():
     
     return driver
 
-def dispatch_twitter_dms(max_dms=5, status_container=None):
+def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
     if "twitter" not in st.secrets or "auth_token" not in st.secrets["twitter"]:
         return 0, "Error: [twitter] auth_token secret is missing."
 
@@ -85,9 +85,26 @@ def dispatch_twitter_dms(max_dms=5, status_container=None):
     
     try:
         sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
-        records = sheet.get_all_records()
-        headers = sheet.row_values(1)
-        status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
+        raw_data = sheet.get_all_values()
+        
+        if not raw_data or len(raw_data) < 2:
+            return 0, "No leads found in the database."
+            
+        # --- FIX: Manual Header Parsing to bypass duplicate/empty column names ---
+        headers = raw_data[0]
+        cleaned_headers = []
+        for idx, h in enumerate(headers):
+            h_clean = str(h).strip()
+            if not h_clean: h_clean = f"Unnamed_{idx}"
+            elif h_clean in cleaned_headers: h_clean = f"{h_clean}_{idx}"
+            cleaned_headers.append(h_clean)
+            
+        records = []
+        for row in raw_data[1:]:
+            row = row + [""] * (len(cleaned_headers) - len(row))
+            records.append(dict(zip(cleaned_headers, row)))
+            
+        status_col_idx = cleaned_headers.index("outreach_status") + 1 if "outreach_status" in cleaned_headers else None
     except Exception as e:
         return 0, f"Database Error: {str(e)}"
         
@@ -99,7 +116,7 @@ def dispatch_twitter_dms(max_dms=5, status_container=None):
         driver = setup_stealth_browser()
         
         # INJECT COOKIE BYPASS
-        driver.get("https://x.com/robots.txt") # Load simple page on domain first to set cookie
+        driver.get("https://x.com/robots.txt") 
         driver.add_cookie({
             'name': 'auth_token',
             'value': st.secrets["twitter"]["auth_token"],
@@ -111,27 +128,36 @@ def dispatch_twitter_dms(max_dms=5, status_container=None):
         for idx, row in enumerate(records):
             if dms_fired >= max_dms: break
                 
-            handle = str(row.get("handle", "")).replace("@", "").strip()
+            # Handle Twitter handles formatted differently
+            raw_handle = str(row.get("handle", "")).strip()
+            # If your Twitter scraper calls it something else (like "Profile URL"), grab the handle from the end
+            if not raw_handle and "Profile URL" in row:
+                raw_handle = str(row.get("Profile URL", "")).split("/")[-1].strip()
+                
+            handle = raw_handle.replace("@", "").strip()
             status = str(row.get("outreach_status", "Pending")).strip()
             bio = str(row.get("bio", "")).strip()
             
-            if not handle or status in ["DM Sent", "DO NOT CONTACT 🛑", "Failed"]:
+            if not handle or status in ["DM Sent", "DO NOT CONTACT 🛑", "DMs Closed / Failed"]:
                 continue
                 
-            if status_container: status_container.info(f"Drafting AI DM for @{handle}...")
-            message = generate_twitter_dm(handle, bio)
+            # --- MESSAGE GENERATION ---
+            if mode == "✍️ Custom Template":
+                if status_container: status_container.info(f"Applying custom template for @{handle}...")
+                message = custom_msg.replace("{name}", handle).replace("{bio}", bio)
+            else:
+                if status_container: status_container.info(f"Drafting AI DM for @{handle}...")
+                message = generate_twitter_dm(handle, bio)
             
             if not message:
                 continue
                 
             if status_container: status_container.warning(f"Navigating to @{handle}'s inbox...")
             
-            # Direct navigation to the user's DM window
             driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
-            time.sleep(random.uniform(5.5, 8.2)) # Let React UI load
+            time.sleep(random.uniform(5.5, 8.2)) 
             
             try:
-                # Target the DM text box (Twitter's DOM changes often, this targets the main input role)
                 message_box = WebDriverWait(driver, 15).until(
                     EC.presence_of_element_located((By.CSS_SELECTOR, 'div[data-testid="dmComposerTextInput"]'))
                 )
@@ -142,15 +168,18 @@ def dispatch_twitter_dms(max_dms=5, status_container=None):
                     time.sleep(random.uniform(0.02, 0.08))
                     
                 time.sleep(random.uniform(1.1, 2.5))
-                message_box.send_keys(Keys.RETURN) # Hit Enter to send
+                message_box.send_keys(Keys.RETURN) 
                 
                 dms_fired += 1
                 
                 if status_col_idx:
                     sheet.update_cell(idx + 2, status_col_idx, "DM Sent")
                     
-                import zynd_outreach_history
-                zynd_outreach_history.log_outreach_event(handle, "Abhinav", "Twitter / X", "Initial Pitch", message)
+                try:
+                    import zynd_outreach_history
+                    zynd_outreach_history.log_outreach_event(handle, "Abhinav", "Twitter / X", "Initial Pitch", message)
+                except:
+                    pass
                 
                 if dms_fired < max_dms:
                     delay = random.randint(90, 180)
@@ -167,6 +196,6 @@ def dispatch_twitter_dms(max_dms=5, status_container=None):
         
     finally:
         if driver:
-            driver.quit() # Always close the browser to free up Linux memory
+            driver.quit() 
             
     return dms_fired, "Twitter automation cycle concluded."

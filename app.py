@@ -870,7 +870,14 @@ elif menu == "⚙️ Control Room":
 
             with st.container(border=True):
                 st.subheader("🐦 Stealth Twitter DM Autopilot")
-                st.write("Boot a headless cloud browser to bypass API limits and fire AI-drafted DMs.")
+                st.write("Boot a headless cloud browser to bypass API limits and fire DMs.")
+                
+                tw_mode = st.radio("Twitter Generation Mode", ["🧠 AI Personalized", "✍️ Custom Template"], horizontal=True, key="tw_radio")
+                
+                tw_custom_msg = ""
+                if tw_mode == "✍️ Custom Template":
+                    st.info("Variables you can use: `{name}`, `{bio}`")
+                    tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space. I'm working on a platform called Zynd for AI agents. Open to checking it out?", height=100)
                 
                 twitter_cap = st.slider("Max DMs (Keep under 10/day)", 1, 15, 3, key="twitter_cap")
                 tw_status = st.empty()
@@ -878,7 +885,12 @@ elif menu == "⚙️ Control Room":
                 if st.button("🚀 Engage Twitter Autopilot", use_container_width=True):
                     with st.spinner("Initializing Linux Chromium instance... Do not close tab."):
                         import zynd_twitter_dm
-                        sent, msg = zynd_twitter_dm.dispatch_twitter_dms(max_dms=twitter_cap, status_container=tw_status)
+                        sent, msg = zynd_twitter_dm.dispatch_twitter_dms(
+                            max_dms=twitter_cap, 
+                            mode=tw_mode, 
+                            custom_msg=tw_custom_msg, 
+                            status_container=tw_status
+                        )
                         
                         tw_status.empty()
                         if sent > 0:
