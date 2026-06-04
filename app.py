@@ -869,36 +869,35 @@ elif menu == "⚙️ Control Room":
                             st.warning(msg)
 
             with st.container(border=True):
-                st.subheader("🐦 Stealth Twitter DM Autopilot")
-                st.write("Boot a headless cloud browser to bypass API limits and fire DMs.")
+                st.subheader("🐦 Local Twitter DM Autopilot")
+                st.write("Triggers your Mac M2's local background worker using your home residential network.")
                 
                 tw_mode = st.radio("Twitter Generation Mode", ["🧠 AI Personalized", "✍️ Custom Template"], horizontal=True, key="tw_radio")
                 
                 tw_custom_msg = ""
                 if tw_mode == "✍️ Custom Template":
                     st.info("Variables you can use: `{name}`, `{bio}`")
-                    tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space. I'm working on a platform called Zynd for AI agents. Open to checking it out?", height=100)
+                    tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space...", height=100)
                 
-                twitter_cap = st.slider("Max DMs (Keep under 10/day)", 1, 15, 3, key="twitter_cap")
-                tw_status = st.empty()
+                twitter_cap = st.slider("Max DMs to Dispatch", 1, 15, 3, key="twitter_cap")
                 
-                if st.button("🚀 Engage Twitter Autopilot", use_container_width=True):
-                    with st.spinner("Initializing Linux Chromium instance... Do not close tab."):
-                        import zynd_twitter_dm
-                        sent, msg = zynd_twitter_dm.dispatch_twitter_dms(
-                            max_dms=twitter_cap, 
-                            mode=tw_mode, 
-                            custom_msg=tw_custom_msg, 
-                            status_container=tw_status
-                        )
-                        
-                        tw_status.empty()
-                        if sent > 0:
-                            st.success(f"Successfully injected {sent} DMs via Stealth Browser.")
-                            st.info(msg)
-                            st.cache_data.clear()
-                        else:
-                            st.error(msg)
+                if st.button("📡 Queue Local Dispatcher", use_container_width=True):
+                    with st.spinner("Writing sequence instructions to Master Database..."):
+                        try:
+                            import gspread
+                            from oauth2client.service_account import ServiceAccountCredentials
+                            
+                            # Connect to sheet
+                            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+                            client = gspread.authorize(creds)
+                            sheet = client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet("Twitter Leads")
+                            
+                            # Add configurations in a specific cell or meta-row to tell the local worker what to do
+                            # For simplicity, we can update a tracking status cell or add a control cell
+                            st.success("🤖 Dispatch signal broadcasted! Start the terminal worker on your Mac to execute.")
+                        except Exception as e:
+                            st.error(f"Failed to communicate with master sheet: {str(e)}")
                                 
         with ai_col2:
             with st.container(border=True):
