@@ -27,7 +27,7 @@ def generate_twitter_dm(prospect_name, bio):
     prompt = f"""
     Act as Abhinav, a technical founder. Write a Twitter DM to a developer you just found.
     Lead Name/Handle: {prospect_name}
-    Their Bio: {bio}
+    Their Bio/Tweet Context: {bio}
     
     Rules:
     1. EXTREMELY short. 1-2 sentences maximum.
@@ -132,13 +132,14 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         for idx, row in enumerate(records):
             if dms_fired >= max_dms: break
                 
-            # ULTRA-RESILIENT HANDLE FINDER
-            raw_handle = str(row.get("Username", row.get("handle", row.get("User", "")))).strip()
+            # ADAPTIVE FIX: Catch the misaligned headers from the Google Sheet
+            # The handle is sitting under "Tweet URL" and the text is under "Unnamed_6"
+            raw_handle = str(row.get("Tweet URL", row.get("Username", row.get("handle", row.get("User", ""))))).strip()
             
-            if not raw_handle:
-                url = str(row.get("Profile URL", row.get("User URL", row.get("Post URL", ""))))
+            # Fallback URL extraction just in case
+            if not raw_handle or "http" in raw_handle:
+                url = str(row.get("Content", row.get("Profile URL", row.get("User URL", row.get("Post URL", "")))))
                 if "x.com/" in url or "twitter.com/" in url:
-                    # Extract handle from a URL like https://x.com/elonmusk/status/123
                     parts = url.split("/")
                     for i, p in enumerate(parts):
                         if p in ["x.com", "twitter.com"] and i + 1 < len(parts):
@@ -147,12 +148,15 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                             
             handle = raw_handle.replace("@", "").split("?")[0].strip()
             
-            if not handle:
+            # Safety check to ensure we aren't trying to message a URL
+            if not handle or "http" in handle:
                 skipped_no_handle += 1
                 continue
                 
             status = str(row.get("outreach_status", "Pending")).strip()
-            bio = str(row.get("bio", str(row.get("Content", "")))).strip()
+            
+            # ADAPTIVE FIX: The tweet text is in the 7th column (Unnamed_6)
+            bio = str(row.get("Unnamed_6", row.get("bio", str(row.get("Content", ""))))).strip()
             
             if status in ["DM Sent", "DO NOT CONTACT 🛑", "DMs Closed / Failed"]:
                 skipped_status += 1
