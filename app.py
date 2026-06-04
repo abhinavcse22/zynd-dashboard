@@ -836,11 +836,14 @@ elif menu == "⚙️ Control Room":
                 st.write("Fires hyper-personalized sequences to scripter/stargazer logs containing public emails.")
                 
                 email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 20, 5, key="email_broadcast_cap")
+                status_placeholder = st.empty() # Creates a space for live text updates
                 
                 if st.button("🚀 Initialize Email Outreach Matrix", type="primary", use_container_width=True):
-                    with st.spinner("Warming up sockets... Drafting custom AI payload strings..."):
+                    with st.spinner("Executing sequence... Do not close this tab."):
                         import zynd_email_dispatcher
-                        sent_count, msg = zynd_email_dispatcher.dispatch_campaign(max_emails=email_cap)
+                        sent_count, msg = zynd_email_dispatcher.dispatch_campaign(max_emails=email_cap, status_container=status_placeholder)
+                        
+                        status_placeholder.empty() # Clear the live updates when finished
                         if sent_count > 0:
                             st.success(f"Success! Safely deployed {sent_count} tracking payloads.")
                             st.info(msg)
