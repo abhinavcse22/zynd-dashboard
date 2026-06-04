@@ -15,6 +15,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -122,21 +124,8 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         
         driver.get("https://x.com/robots.txt") 
         
-        # INJECT BOTH TOKENS FOR MAXIMUM STEALTH
-        driver.add_cookie({
-            'name': 'auth_token',
-            'value': st.secrets["twitter"]["auth_token"],
-            'domain': '.x.com',
-            'path': '/',
-            'secure': True
-        })
-        driver.add_cookie({
-            'name': 'ct0',
-            'value': st.secrets["twitter"]["ct0"],
-            'domain': '.x.com',
-            'path': '/',
-            'secure': True
-        })
+        driver.add_cookie({'name': 'auth_token', 'value': st.secrets["twitter"]["auth_token"], 'domain': '.x.com', 'path': '/', 'secure': True})
+        driver.add_cookie({'name': 'ct0', 'value': st.secrets["twitter"]["ct0"], 'domain': '.x.com', 'path': '/', 'secure': True})
         
         for idx, row in enumerate(records):
             if dms_fired >= max_dms: break
@@ -181,6 +170,13 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             time.sleep(random.uniform(7.5, 10.2)) 
             
             try:
+                # MODAL KILLER: Spam the ESC key to close encryption popups or welcome screens
+                actions = ActionChains(driver)
+                actions.send_keys(Keys.ESCAPE).perform()
+                time.sleep(0.5)
+                actions.send_keys(Keys.ESCAPE).perform()
+                time.sleep(1.0)
+
                 selectors = [
                     'div[data-testid="dmComposerTextInput"]',
                     'div[data-testid="tweetTextarea_0"]'
@@ -199,20 +195,22 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                 if not message_box:
                     raise Exception("Message input box not found in DOM.")
                 
-                # Type the message
                 for char in message:
                     message_box.send_keys(char)
                     time.sleep(random.uniform(0.01, 0.05))
                     
                 time.sleep(random.uniform(1.0, 2.0))
                 
-                # NEW FIX: Physically click the Send button instead of hitting Enter
-                send_button = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
-                )
-                send_button.click()
+                # JAVASCRIPT OVERRIDE: If a modal blocks the click, JS will bypass it and click anyway
+                try:
+                    send_button = WebDriverWait(driver, 5).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
+                    )
+                    send_button.click()
+                except Exception:
+                    send_button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]')
+                    driver.execute_script("arguments[0].click();", send_button)
                 
-                # Wait for the network request to actually fire before closing the tab
                 time.sleep(random.uniform(3.0, 4.5))
                 
                 dms_fired += 1
