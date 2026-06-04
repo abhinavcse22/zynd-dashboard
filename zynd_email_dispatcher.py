@@ -34,7 +34,7 @@ def generate_personalized_payload(prospect_name, context_signal, bio):
        - Briefly mention Zynd: "we're building a workspace for autonomous AI agents to get discovered and integrated."
        - Soft call to action: "Would love to get your eyes on it" or "Any interest in taking a quick look?"
     
-    You MUST return the output in exactly this format with no other text:
+    You MUST return the output in exactly this format with no other text or markdown blocks:
     SUBJECT: [Your Subject Line]
     BODY: [Your Email Body]
     """
@@ -48,16 +48,21 @@ def generate_personalized_payload(prospect_name, context_signal, bio):
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=20)
         if response.status_code == 200:
             ai_text = response.json()['choices'][0]['message']['content']
+            
+            # Clean up potential markdown blocks from the LLM
+            ai_text = ai_text.replace("```text", "").replace("
+```", "").strip()
+            
             if "SUBJECT:" in ai_text and "BODY:" in ai_text:
                 subject = ai_text.split("SUBJECT:")[1].split("BODY:")[0].strip()
                 body = ai_text.split("BODY:")[1].strip()
                 return subject, body
-        return None, None # Return None if AI fails so we don't send a garbage fallback
+        return None, None 
     except Exception:
         return None, None
 
 def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", custom_body="", status_container=None):
-    """Scans databases, applies chosen template/AI, fires via SMTP, and logs updates."""
+    """Scans databases, applies chosen template/AI, fires via SMTP, and logs updates safely."""
     if "smtp" not in st.secrets:
         return 0, "Error: [smtp] secrets block is missing."
 
@@ -65,8 +70,14 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
     
-    sheet = client.open_by_key(SHEET_ID).worksheet("github_stargazer_leads")
-    records = sheet.get_all_records()
+    try:
+        sheet = client.open_by_key(SHEET_ID).worksheet("github_stargazer_leads")
+        records = sheet.get_all_records()
+        # FIX: Fetch headers exactly ONCE before the loop to save massive API limits
+        headers = sheet.row_values(1)
+        status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
+    except Exception as e:
+        return 0, f"Database Connection Error: {str(e)}"
     
     if not records: return 0, "No leads located inside the target database."
 
@@ -94,22 +105,22 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
             continue
             
         # --- MESSAGE GENERATION LOGIC ---
-        if mode == "Custom Template":
+        if mode == "✍️ Custom Template":
             if status_container: status_container.info(f"Applying custom template for {username}...")
-            # Inject variables into the user's template
             subject = custom_subject.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
             body = custom_body.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
         else:
             if status_container: status_container.info(f"Drafting AI payload for {username}...")
             subject, body = generate_personalized_payload(username, signal, bio)
             
-            # If AI fails, skip this lead and mark it so we don't send a bad email
             if not subject or not body:
                 if status_container: status_container.error(f"AI failed to generate quality email for {username}. Skipping to protect brand.")
-                row_num = idx + 2
-                headers = sheet.row_values(1)
-                if "outreach_status" in headers:
-                    sheet.update_cell(row_num, headers.index("outreach_status") + 1, "AI Generation Failed")
+                # Update status and sleep briefly to prevent rapid-fire API ban
+                if status_col_idx:
+                    try:
+                        sheet.update_cell(idx + 2, status_col_idx, "AI Generation Failed")
+                        time.sleep(2) 
+                    except Exception: pass
                 continue
         
         # --- EMAIL DISPATCH ---
@@ -128,12 +139,10 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
             server.quit()
             
             emails_fired += 1
-            row_num = idx + 2
             
-            # Update CRM
-            headers = sheet.row_values(1)
-            if "outreach_status" in headers:
-                sheet.update_cell(row_num, headers.index("outreach_status") + 1, "Message 1 Sent")
+            # Update CRM efficiently
+            if status_col_idx:
+                sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
                 
             # Log to History
             try:
@@ -142,7 +151,7 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
             except Exception:
                 pass
             
-            # EXTREME STEALTH DELAY (2 to 5 minutes between emails to prevent account bans)
+            # EXTREME STEALTH DELAY
             if emails_fired < max_emails:
                 delay = random.randint(120, 300) 
                 if status_container: status_container.success(f"Email sent! Human emulation active: Sleeping for {delay} seconds to bypass ISP spam filters...")
