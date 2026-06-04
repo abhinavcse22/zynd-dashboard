@@ -42,7 +42,7 @@ def generate_personalized_payload(prospect_name, context_signal, bio):
     
     # Swapped to a highly reliable model string just in case the previous one was timing out
     data = {
-        "model": "google/gemini-1.5-flash", 
+        "model": "openai/gpt-4o-mini", 
         "messages": [{"role": "user", "content": prompt}]
     }
     
