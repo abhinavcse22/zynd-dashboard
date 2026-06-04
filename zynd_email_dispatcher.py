@@ -10,10 +10,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- ENVIRONMENT PARAMETERS ---
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
-OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
 
 def generate_personalized_payload(prospect_name, context_signal, bio):
     """Hits OpenRouter to craft a high-converting, peer-to-peer cold email."""
+    OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
@@ -73,13 +73,19 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
     try:
         sheet = client.open_by_key(SHEET_ID).worksheet("github_stargazer_leads")
         records = sheet.get_all_records()
-        # FIX: Fetch headers exactly ONCE before the loop to save massive API limits
+        
+        # Fetch headers exactly ONCE before the loop to save massive API limits
         headers = sheet.row_values(1)
-        status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
+        if "outreach_status" in headers:
+            status_col_idx = headers.index("outreach_status") + 1
+        else:
+            status_col_idx = None
+            
     except Exception as e:
         return 0, f"Database Connection Error: {str(e)}"
     
-    if not records: return 0, "No leads located inside the target database."
+    if not records:
+        return 0, "No leads located inside the target database."
 
     smtp_server = st.secrets["smtp"]["server"]
     smtp_port = int(st.secrets["smtp"]["port"])
@@ -106,21 +112,25 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
             
         # --- MESSAGE GENERATION LOGIC ---
         if mode == "✍️ Custom Template":
-            if status_container: status_container.info(f"Applying custom template for {username}...")
+            if status_container:
+                status_container.info(f"Applying custom template for {username}...")
             subject = custom_subject.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
             body = custom_body.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
         else:
-            if status_container: status_container.info(f"Drafting AI payload for {username}...")
+            if status_container:
+                status_container.info(f"Drafting AI payload for {username}...")
             subject, body = generate_personalized_payload(username, signal, bio)
             
             if not subject or not body:
-                if status_container: status_container.error(f"AI failed to generate quality email for {username}. Skipping to protect brand.")
+                if status_container:
+                    status_container.error(f"AI failed to generate quality email for {username}. Skipping to protect brand.")
                 # Update status and sleep briefly to prevent rapid-fire API ban
                 if status_col_idx:
                     try:
                         sheet.update_cell(idx + 2, status_col_idx, "AI Generation Failed")
                         time.sleep(2) 
-                    except Exception: pass
+                    except Exception:
+                        pass
                 continue
         
         # --- EMAIL DISPATCH ---
@@ -131,7 +141,9 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
         msg.attach(MIMEText(body, 'plain'))
         
         try:
-            if status_container: status_container.warning(f"Connecting to SMTP server... firing email to {prospect_email}")
+            if status_container:
+                status_container.warning(f"Connecting to SMTP server... firing email to {prospect_email}")
+            
             server = smtplib.SMTP(smtp_server, smtp_port)
             server.starttls()
             server.login(sender_email, sender_password)
@@ -154,7 +166,8 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
             # EXTREME STEALTH DELAY
             if emails_fired < max_emails:
                 delay = random.randint(120, 300) 
-                if status_container: status_container.success(f"Email sent! Human emulation active: Sleeping for {delay} seconds to bypass ISP spam filters...")
+                if status_container:
+                    status_container.success(f"Email sent! Human emulation active: Sleeping for {delay} seconds to bypass ISP spam filters...")
                 time.sleep(delay)
                 
         except Exception as e:
