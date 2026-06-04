@@ -21,3 +21,4 @@ duckduckgo-search
 selenium==4.18.1
 webdriver-manager==4.0.1
 twikit
+git+https://github.com/d60/twikit.git@main
