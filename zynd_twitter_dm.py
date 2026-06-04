@@ -15,7 +15,6 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -81,8 +80,8 @@ def setup_stealth_browser():
     return driver
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
-    if "twitter" not in st.secrets or "auth_token" not in st.secrets["twitter"]:
-        return 0, "Error: [twitter] auth_token secret is missing from Streamlit Cloud."
+    if "twitter" not in st.secrets or "auth_token" not in st.secrets["twitter"] or "ct0" not in st.secrets["twitter"]:
+        return 0, "Error: [twitter] auth_token OR ct0 secret is missing from Streamlit Cloud."
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -122,9 +121,18 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
         driver = setup_stealth_browser()
         
         driver.get("https://x.com/robots.txt") 
+        
+        # INJECT BOTH TOKENS FOR MAXIMUM STEALTH
         driver.add_cookie({
             'name': 'auth_token',
             'value': st.secrets["twitter"]["auth_token"],
+            'domain': '.x.com',
+            'path': '/',
+            'secure': True
+        })
+        driver.add_cookie({
+            'name': 'ct0',
+            'value': st.secrets["twitter"]["ct0"],
             'domain': '.x.com',
             'path': '/',
             'secure': True
@@ -170,14 +178,12 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             if status_container: status_container.warning(f"Navigating to @{handle}'s inbox...")
             
             driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
-            time.sleep(random.uniform(7.5, 10.2)) # Increased wait time to let React load fully
+            time.sleep(random.uniform(7.5, 10.2)) 
             
             try:
-                # We use multiple fallback selectors just in case Twitter changes their code
                 selectors = [
                     'div[data-testid="dmComposerTextInput"]',
-                    'div[data-testid="tweetTextarea_0"]',
-                    'div[aria-label="Start a new message"]'
+                    'div[data-testid="tweetTextarea_0"]'
                 ]
                 
                 message_box = None
@@ -193,12 +199,21 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                 if not message_box:
                     raise Exception("Message input box not found in DOM.")
                 
+                # Type the message
                 for char in message:
                     message_box.send_keys(char)
-                    time.sleep(random.uniform(0.02, 0.08))
+                    time.sleep(random.uniform(0.01, 0.05))
                     
-                time.sleep(random.uniform(1.1, 2.5))
-                message_box.send_keys(Keys.RETURN) 
+                time.sleep(random.uniform(1.0, 2.0))
+                
+                # NEW FIX: Physically click the Send button instead of hitting Enter
+                send_button = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
+                )
+                send_button.click()
+                
+                # Wait for the network request to actually fire before closing the tab
+                time.sleep(random.uniform(3.0, 4.5))
                 
                 dms_fired += 1
                 
@@ -213,11 +228,10 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                 
                 if dms_fired < max_dms:
                     delay = random.randint(90, 180)
-                    if status_container: status_container.success(f"DM Sent! Sleeping {delay} seconds to avoid rate limits...")
+                    if status_container: status_container.success(f"DM Sent successfully! Sleeping {delay} seconds to avoid rate limits...")
                     time.sleep(delay)
                     
             except Exception as e:
-                # X-RAY DEBUGGER: Take a screenshot of the failure
                 screenshot_path = f"debug_twitter_{handle}.png"
                 driver.save_screenshot(screenshot_path)
                 
