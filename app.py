@@ -4,6 +4,7 @@ import urllib.parse
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import plotly.express as px
+import math 
 
 # --- IMPORT ENGINES ---
 import zynd_leads
@@ -61,7 +62,7 @@ if not check_password():
     st.stop()
 
 # ==========================================
-# 🚀 CORE APPLICATION 
+# 🚀 CORE APPLICATION & CUSTOM UI
 # ==========================================
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -69,9 +70,74 @@ SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 if 'last_sync_time' not in st.session_state:
     st.session_state['last_sync_time'] = pd.Timestamp.now().strftime('%H:%M')
 
+def display_paginated_table(df, key_prefix, page_size=10):
+    """Custom Engine to generate wrapped-text rows, clickable URLs, and Pagination."""
+    if df.empty:
+        st.info("No data available in this view. Run the associated scraper in the Control Room.")
+        return
+
+    # Pagination State Setup
+    if f"{key_prefix}_page" not in st.session_state:
+        st.session_state[f"{key_prefix}_page"] = 1
+        
+    total_pages = max(1, math.ceil(len(df) / page_size))
+    
+    # Safety catch if filters shrink the database
+    if st.session_state[f"{key_prefix}_page"] > total_pages:
+        st.session_state[f"{key_prefix}_page"] = total_pages
+        
+    current_page = st.session_state[f"{key_prefix}_page"]
+    
+    # Slice the Dataframe
+    start_idx = (current_page - 1) * page_size
+    end_idx = start_idx + page_size
+    df_page = df.iloc[start_idx:end_idx]
+    
+    # Build HTML Table
+    html = "<div style='overflow-x:auto; margin-bottom: 20px;'><table style='width:100%; border-collapse: collapse; font-size: 14px; background-color: #161b22; border-radius: 8px; overflow: hidden;'>"
+    
+    # Headers
+    html += "<thead><tr style='background-color: #21262d;'>"
+    for col in df_page.columns:
+        html += f"<th style='padding: 12px; text-align: left; color: #c9d1d9; border-bottom: 1px solid #30363d; min-width: 120px;'>{col}</th>"
+    html += "</tr></thead><tbody>"
+    
+    # Rows
+    for _, row in df_page.iterrows():
+        html += "<tr style='border-bottom: 1px solid #30363d;'>"
+        for col in df_page.columns:
+            val = str(row[col])
+            
+            # Format URLs to be clickable buttons
+            if val.startswith("http://") or val.startswith("https://"):
+                val = f"<a href='{val}' target='_blank' style='color: #58a6ff; text-decoration: none; font-weight: bold;'>View 🔗</a>"
+            # Replace physical line breaks with HTML line breaks
+            else:
+                val = val.replace('\n', '<br>')
+                
+            html += f"<td style='padding: 12px; color: #c9d1d9; vertical-align: top;'>{val}</td>"
+        html += "</tr>"
+    html += "</tbody></table></div>"
+    
+    # Render the table
+    st.markdown(html, unsafe_allow_html=True)
+    
+    # Render Pagination Controls
+    col1, col2, col3, col4, col5 = st.columns([1, 1, 2, 1, 1])
+    with col2:
+        if st.button("⬅️ Previous", key=f"{key_prefix}_prev", disabled=(current_page == 1), use_container_width=True):
+            st.session_state[f"{key_prefix}_page"] -= 1
+            st.rerun()
+    with col3:
+        st.markdown(f"<div style='text-align: center; padding-top: 8px; color: #8b949e;'>Page {current_page} of {total_pages} &nbsp;|&nbsp; Total Leads: {len(df)}</div>", unsafe_allow_html=True)
+    with col4:
+        if st.button("Next ➡️", key=f"{key_prefix}_next", disabled=(current_page == total_pages), use_container_width=True):
+            st.session_state[f"{key_prefix}_page"] += 1
+            st.rerun()
+
 @st.cache_data(ttl=300, show_spinner=False)
 def load_full_database():
-    """Securely loads and parses database worksheets while fixing header issues dynamically."""
+    """Securely loads and parses ALL database worksheets including previously hidden ones."""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
@@ -86,7 +152,6 @@ def load_full_database():
             headers = raw_data[0]
             cleaned_headers = []
             
-            # Anti-Duplicate / Anti-Blank Header Parser
             for idx, h in enumerate(headers):
                 h_clean = str(h).strip()
                 if not h_clean:
@@ -97,17 +162,26 @@ def load_full_database():
                     cleaned_headers.append(h_clean)
                     
             return pd.DataFrame(raw_data[1:], columns=cleaned_headers)
-        except Exception as e:
-            st.sidebar.warning(f"⚠️ Tab Check: '{tab_name}' skipped or formatting.")
-            return pd.DataFrame()
+        except Exception:
+            return pd.DataFrame() # Return empty cleanly if tab doesn't exist yet
 
+    # Load Core Platforms
     gh = secure_load("GitHub Leads")
     rd = secure_load("Reddit Leads")
     tw = secure_load("Twitter Leads")
     star = secure_load("github_stargazer_leads")
     fork = secure_load("Fork Sniper Leads")
     
-    return gh, rd, tw, star, fork
+    # Load Newly Revealed Extensions
+    tele = secure_load("Telegram Leads")
+    inf = secure_load("Influencer Leads")
+    issue = secure_load("Issue Leads")
+    disc = secure_load("Discord Leads")
+    direc = secure_load("Directory Leads")
+    hack = secure_load("Hackathon Leads")
+    contrib = secure_load("Contributor Leads")
+    
+    return gh, rd, tw, star, fork, tele, inf, issue, disc, direc, hack, contrib
 
 def clean_database():
     """Enterprise-grade background sweeper that cleans all operational tabs."""
@@ -116,7 +190,6 @@ def clean_database():
     client = gspread.authorize(creds)
     total_removed = 0
     
-    # 1. The Map: Defines exactly which column makes a lead "unique" in each tab
     cleaning_map = {
         "GitHub Leads": "Project URL",
         "Reddit Leads": "Post URL",
@@ -125,22 +198,20 @@ def clean_database():
         "Fork Sniper Leads": "Profile URL",
         "Telegram Leads": "User ID",
         "Influencer Leads": "URL",
-        "Issue Leads": "Username"
+        "Issue Leads": "Username",
+        "Discord Leads": "Username",
+        "Hackathon Leads": "Repo Link",
+        "Contributor Leads": "Developer"
     }
 
     for tab_name, unique_key in cleaning_map.items():
         try:
             worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
             data = worksheet.get_all_records()
-            
-            if not data:
-                continue
+            if not data: continue
                 
             df = pd.DataFrame(data)
-            
-            # Skip if the target column doesn't exist
-            if unique_key not in df.columns:
-                continue
+            if unique_key not in df.columns: continue
 
             before_count = len(df)
             df.drop_duplicates(subset=[unique_key], keep='first', inplace=True)
@@ -153,13 +224,12 @@ def clean_database():
                 total_removed += (before_count - after_count)
                 
         except Exception as e:
-            st.sidebar.warning(f"⚠️ Sweeper skipped '{tab_name}': {str(e)}")
             continue
 
     return total_removed
 
-# Unpack the 5 databases safely
-df_gh, df_rd, df_tw, df_star, df_fork = load_full_database()
+# Unpack all 12 databases safely
+df_gh, df_rd, df_tw, df_star, df_fork, df_tele, df_inf, df_issue, df_disc, df_dir, df_hack, df_contrib = load_full_database()
 
 # Safe conversions for metric generation logic
 if not df_rd.empty and 'Lead Score (1-10)' in df_rd.columns:
@@ -179,12 +249,15 @@ with st.sidebar:
     st.title("Zynd OS")
     st.caption("v2.0 | Secured Workspace")
     st.markdown("---")
+    
     menu = st.radio("Navigation", [
         "📈 Campaign Dashboard",
         "📈 Pipeline Overview", 
         "💻 GitHub Builders", 
         "💬 Reddit Intent", 
         "🐦 Twitter Sniper", 
+        "💬 Communities & Comms", 
+        "🌐 Web & Influencers",
         "⚙️ Control Room",
         "📚 System Documentation"
     ])
@@ -346,8 +419,10 @@ elif menu == "📈 Pipeline Overview":
     col_left, col_right = st.columns([2, 1])
     with col_left:
         st.subheader("Recent High-Intent Activity")
-        if not df_rd.empty: st.data_editor(df_rd.head(25), use_container_width=True, num_rows="dynamic") 
-        else: st.write("No recent activity found.")
+        if not df_rd.empty: 
+            display_paginated_table(df_rd.head(25), "pipeline_rd", page_size=5)
+        else: 
+            st.write("No recent activity found.")
     with col_right:
         st.subheader("Platform Distribution")
         chart_data = pd.DataFrame({'Source': ['GitHub', 'Reddit', 'Twitter', 'Forks'], 'Count': [len(df_gh), len(df_rd), len(df_tw), len(df_fork)]})
@@ -357,7 +432,9 @@ elif menu == "📈 Pipeline Overview":
 # 💻 TAB: GITHUB BUILDERS
 # ==========================================
 elif menu == "💻 GitHub Builders":
-    gh_tab1, gh_tab2, gh_tab3 = st.tabs(["🔭 Stargazer Radar (Intent Leads)", "🎯 Fork Sniped Leads", "🗄️ Standard Builder DB"])
+    gh_tab1, gh_tab2, gh_tab3, gh_tab4, gh_tab5 = st.tabs([
+        "🔭 Stargazer Radar", "🎯 Fork Snipers", "🐛 Issue Snipers", "🏆 Core Contributors", "🗄️ Standard Builder DB"
+    ])
     
     with gh_tab1:
         st.header("GitHub Stargazer Intelligence")
@@ -377,46 +454,45 @@ elif menu == "💻 GitHub Builders":
             if f_has_repo != "All": filtered_star = filtered_star[filtered_star['has_ai_agent_repo'] == f_has_repo]
             if f_outreach != "All": filtered_star = filtered_star[filtered_star['outreach_status'] == f_outreach]
 
-            st.subheader("Radar Analytics")
-            c1, c2 = st.columns(2)
-            repo_counts = df_star['source_repo'].value_counts().reset_index()
-            repo_counts.columns = ['Repo', 'Count']
-            if not repo_counts.empty:
-                c1.plotly_chart(px.bar(repo_counts, x='Repo', y='Count', title="Leads by Source Repo", template="plotly_dark"), use_container_width=True)
-            
-            bucket_counts = df_star['lead_bucket'].value_counts().reset_index()
-            bucket_counts.columns = ['Bucket', 'Count']
-            if not bucket_counts.empty:
-                c2.plotly_chart(px.pie(bucket_counts, names='Bucket', values='Count', title="Lead Quality Distribution", template="plotly_dark"), use_container_width=True)
-
             st.divider()
-
             st.subheader("Target List")
             display_cols = ['github_profile_url', 'source_repo', 'matched_keywords', 'lead_score', 'suggested_outreach_action', 'outreach_status']
             existing_cols = [col for col in display_cols if col in filtered_star.columns]
-            st.data_editor(filtered_star.sort_values(by='lead_score', ascending=False)[existing_cols] if 'lead_score' in filtered_star.columns else filtered_star, use_container_width=True, num_rows="dynamic")
+            
+            final_view_df = filtered_star.sort_values(by='lead_score', ascending=False)[existing_cols] if 'lead_score' in filtered_star.columns else filtered_star
+            display_paginated_table(final_view_df, "gh_star_tbl")
             
             st.download_button(label="📥 Export Filtered Leads to CSV", data=filtered_star.to_csv(index=False).encode('utf-8'), file_name='zynd_stargazer_leads.csv', mime='text/csv', type="primary")
 
     with gh_tab2:
         st.header("🎯 High-Intent Fork Builders")
         st.write("Developers who actively copied competitor repositories to build their own projects.")
-        st.metric("Total Sniped Builders", len(df_fork))
-        
+        display_paginated_table(df_fork, "gh_fork_tbl")
         if not df_fork.empty:
-            st.data_editor(df_fork, use_container_width=True, height=500, num_rows="dynamic")
-            st.download_button(label="📥 Export Fork Leads to CSV", data=df_fork.to_csv(index=False).encode('utf-8'), file_name='zynd_fork_leads.csv', mime='text/csv', type="primary")
-        else:
-            st.info("No fork leads found in the database yet. Run the 'GitHub Fork Sniper' in the Control Room.")
+            st.download_button(label="📥 Export Fork Leads to CSV", data=df_fork.to_csv(index=False).encode('utf-8'), file_name='zynd_fork_leads.csv', mime='text/csv')
 
     with gh_tab3:
+        st.header("🐛 Active Issue Snipes")
+        st.write("Developers actively complaining or logging bugs in competitor repositories.")
+        display_paginated_table(df_issue, "gh_issue_tbl")
+        if not df_issue.empty:
+            st.download_button(label="📥 Export Issue Leads to CSV", data=df_issue.to_csv(index=False).encode('utf-8'), file_name='zynd_issue_leads.csv', mime='text/csv')
+
+    with gh_tab4:
+        st.header("🏆 Verified Core Contributors")
+        st.write("Elite developers with verified, merged code patches to target repositories within the last 180 days.")
+        display_paginated_table(df_contrib, "gh_contrib_tbl")
+        if not df_contrib.empty:
+            st.download_button(label="📥 Export Contributor Leads", data=df_contrib.to_csv(index=False).encode('utf-8'), file_name='zynd_contributor_leads.csv', mime='text/csv')
+
+    with gh_tab5:
         st.header("Standard Technical Discovery")
         q_col1, q_col2 = st.columns([3, 1])
         with q_col2: min_gh = st.slider("Min Lead Score", 1, 10, 7, key="gh_slider")
         filtered_gh = df_gh[df_gh['Lead Score (1-10)'].astype(float, errors='ignore') >= min_gh] if not df_gh.empty and 'Lead Score (1-10)' in df_gh.columns else df_gh
         
         st.metric("Total GitHub Leads (Filtered)", len(filtered_gh))
-        st.data_editor(filtered_gh, use_container_width=True, height=600, num_rows="dynamic")
+        display_paginated_table(filtered_gh, "gh_std_tbl")
         
         col_export, col_osint = st.columns(2)
         with col_export:
@@ -435,8 +511,7 @@ elif menu == "💻 GitHub Builders":
 elif menu == "💬 Reddit Intent":
     st.header("Social Intent & Pain Points")
     st.metric("Total Reddit Leads", len(df_rd))
-    st.data_editor(df_rd, use_container_width=True, height=400, num_rows="dynamic")
-    
+    display_paginated_table(df_rd, "rd_tbl")
     if not df_rd.empty:
         st.download_button(label="📥 Export Reddit Leads to CSV", data=df_rd.to_csv(index=False).encode('utf-8'), file_name='zynd_reddit_leads.csv', mime='text/csv')
 
@@ -446,7 +521,7 @@ elif menu == "💬 Reddit Intent":
 elif menu == "🐦 Twitter Sniper":
     st.header("Real-time Twitter Harvesting")
     st.metric("Total Twitter Leads", len(df_tw))
-    st.data_editor(df_tw, use_container_width=True, height=400, num_rows="dynamic")
+    display_paginated_table(df_tw, "tw_tbl")
     
     if not df_tw.empty:
         st.download_button(label="📥 Export Twitter Leads to CSV", data=df_tw.to_csv(index=False).encode('utf-8'), file_name='zynd_twitter_leads.csv', mime='text/csv')
@@ -463,7 +538,55 @@ elif menu == "🐦 Twitter Sniper":
         st.error("Could not load Twitter sniper URLs. Make sure zynd_twitter_sniper.py is in your repo.")
 
 # ==========================================
-# ⚙️ TAB: CONTROL ROOM (RE-ENGINEERED UI)
+# 💬 TAB: COMMUNITIES & COMMS (NEW)
+# ==========================================
+elif menu == "💬 Communities & Comms":
+    st.header("Encrypted Network Intelligence")
+    st.write("Leads extracted directly from targeted Discord, Slack, and Telegram channels.")
+    
+    c_tab1, c_tab2 = st.tabs(["👻 Telegram Leads", "🥷 Discord/Slack Leads"])
+    
+    with c_tab1:
+        st.subheader("Telegram Extracted Profiles")
+        display_paginated_table(df_tele, "tele_tbl")
+        if not df_tele.empty:
+            st.download_button(label="📥 Export Telegram Leads", data=df_tele.to_csv(index=False).encode('utf-8'), file_name='zynd_telegram_leads.csv', mime='text/csv')
+            
+    with c_tab2:
+        st.subheader("Discord & Slack Active Network Nodes")
+        display_paginated_table(df_disc, "disc_tbl")
+        if not df_disc.empty:
+            st.download_button(label="📥 Export Discord Leads", data=df_disc.to_csv(index=False).encode('utf-8'), file_name='zynd_discord_leads.csv', mime='text/csv')
+
+# ==========================================
+# 🌐 TAB: WEB & INFLUENCERS (NEW)
+# ==========================================
+elif menu == "🌐 Web & Influencers":
+    st.header("Web OSINT & Broadcast Media")
+    st.write("Micro-influencers, Hackathon builders, and curated Web3 directories.")
+    
+    w_tab1, w_tab2, w_tab3 = st.tabs(["🎥 Influencer Leads", "🗂️ Directory Leads", "🍕 Hackathon Leads"])
+    
+    with w_tab1:
+        st.subheader("Targeted Micro-Influencers (YouTube)")
+        display_paginated_table(df_inf, "inf_tbl")
+        if not df_inf.empty:
+            st.download_button(label="📥 Export Influencers", data=df_inf.to_csv(index=False).encode('utf-8'), file_name='zynd_influencer_leads.csv', mime='text/csv')
+            
+    with w_tab2:
+        st.subheader("Awesome List & Directory Targets")
+        display_paginated_table(df_dir, "dir_tbl")
+        if not df_dir.empty:
+            st.download_button(label="📥 Export Directory Leads", data=df_dir.to_csv(index=False).encode('utf-8'), file_name='zynd_directory_leads.csv', mime='text/csv')
+            
+    with w_tab3:
+        st.subheader("Recent Hackathon Projects")
+        display_paginated_table(df_hack, "hack_tbl")
+        if not df_hack.empty:
+            st.download_button(label="📥 Export Hackathon Leads", data=df_hack.to_csv(index=False).encode('utf-8'), file_name='zynd_hackathon_leads.csv', mime='text/csv')
+
+# ==========================================
+# ⚙️ TAB: CONTROL ROOM
 # ==========================================
 elif menu == "⚙️ Control Room":
     st.header("🎛️ Advanced Operations Command Console")
@@ -809,19 +932,6 @@ elif menu == "⚙️ Control Room":
                             st.cache_data.clear()
                         else: 
                             st.error(msg)
-                        
-        st.divider()
-        st.markdown("### 🧹 Database Integrity Engine")
-        st.write("Scan all database partitions and purge duplicate records to prevent system bloat.")
-        if st.button("Run Master Deduplication Sweep 🧹", use_container_width=True):
-            with st.spinner("Scanning database records for duplicates..."):
-                removed_count = clean_database()
-                if removed_count > 0:
-                    st.success(f"Sweep complete! Purged {removed_count} duplicate records from the ecosystem.")
-                    st.cache_data.clear()
-                else:
-                    st.info("Database is clean. No duplicate records found.")
-
 
         st.divider()
         st.markdown("### 🎯 Global Intent Scorer")
@@ -835,6 +945,18 @@ elif menu == "⚙️ Control Room":
                     st.cache_data.clear()
                 else:
                     st.info("All leads have already been scored.")
+                        
+        st.divider()
+        st.markdown("### 🧹 Database Integrity Engine")
+        st.write("Scan all database partitions and purge duplicate records to prevent system bloat.")
+        if st.button("Run Master Deduplication Sweep 🧹", use_container_width=True):
+            with st.spinner("Scanning database records for duplicates..."):
+                removed_count = clean_database()
+                if removed_count > 0:
+                    st.success(f"Sweep complete! Purged {removed_count} duplicate records from the ecosystem.")
+                    st.cache_data.clear()
+                else:
+                    st.info("Database is clean. No duplicate records found.")
         
         st.divider()
         st.markdown("### 🎥 Influencer Campaign Matrix")
@@ -928,7 +1050,7 @@ elif menu == "📚 System Documentation":
             1. Navigate to: **`⚙️ Control Room`** ➡️ **`🏴‍☠️ Codebase Infiltration`**
             2. Enter the target blueprint (e.g., `crewAIInc/crewAI`).
             3. Click **Snipe Competitor Forks**.
-            4. View results in: **`💻 GitHub Builders`** ➡️ **`🎯 Fork Sniped Leads`**.
+            4. View results in: **`💻 GitHub Builders`** ➡️ **`🎯 Fork Snipers`**.
             """)
 
         with st.expander("3. Reddit & Twitter Intent Radars"):
@@ -949,7 +1071,8 @@ elif menu == "📚 System Documentation":
             **How to use it:**
             1. Navigate to: **`⚙️ Control Room`** ➡️ **`💬 Community Signals`**
             2. Enter a niche query (e.g., `LangChain tutorial`).
-            3. Click **Hunt Creators**. Leads are saved to the `Influencer Leads` Google Sheet tab.
+            3. Click **Hunt Creators**. 
+            4. View results in: **`🌐 Web & Influencers`** ➡️ **`🎥 Influencer Leads`**.
             """)
 
     # --- PHASE 2: CRM & ENRICHMENT ---
