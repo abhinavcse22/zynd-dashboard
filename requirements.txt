@@ -20,4 +20,4 @@ tweety-ns
 duckduckgo-search
 selenium==4.18.1
 webdriver-manager==4.0.1
-twikit==2.1.2
+twikit
