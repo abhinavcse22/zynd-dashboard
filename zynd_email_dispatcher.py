@@ -4,6 +4,7 @@ import requests
 import smtplib
 import time
 import random
+import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from oauth2client.service_account import ServiceAccountCredentials
@@ -12,7 +13,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def generate_personalized_payload(prospect_name, context_signal, bio):
-    """Hits OpenRouter to craft a high-converting, peer-to-peer cold email."""
+    """Hits OpenRouter and uses robust Regex to extract the subject and body."""
     OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -39,26 +40,36 @@ def generate_personalized_payload(prospect_name, context_signal, bio):
     BODY: [Your Email Body]
     """
     
+    # Swapped to a highly reliable model string just in case the previous one was timing out
     data = {
-        "model": "google/gemini-2.5-flash",
+        "model": "google/gemini-1.5-flash", 
         "messages": [{"role": "user", "content": prompt}]
     }
     
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=20)
-        if response.status_code == 200:
-            ai_text = response.json()['choices'][0]['message']['content']
+        
+        if response.status_code != 200:
+            return None, None, f"OpenRouter API Error {response.status_code}: {response.text}"
             
-            # Clean up potential markdown blocks from the LLM
-            ai_text = ai_text.replace("```text", "").replace("```", "").strip()
+        ai_text = response.json()['choices'][0]['message']['content']
+        
+        # Clean up potential markdown blocks from the LLM
+        ai_text = ai_text.replace("```text", "").replace("```", "").replace("**", "").strip()
+        
+        # BULLETPROOF REGEX PARSING (Case-insensitive)
+        subject_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
+        body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
+        
+        if subject_match and body_match:
+            subject = subject_match.group(1).strip()
+            body = body_match.group(1).strip()
+            return subject, body, None
+        else:
+            return None, None, f"AI ignored formatting rules. Raw output preview: {ai_text[:100]}..."
             
-            if "SUBJECT:" in ai_text and "BODY:" in ai_text:
-                subject = ai_text.split("SUBJECT:")[1].split("BODY:")[0].strip()
-                body = ai_text.split("BODY:")[1].strip()
-                return subject, body
-        return None, None 
-    except Exception:
-        return None, None
+    except Exception as e:
+        return None, None, f"API Connection Timeout/Failure: {str(e)}"
 
 def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", custom_body="", status_container=None):
     """Scans databases, applies chosen template/AI, fires via SMTP, and logs updates safely."""
@@ -73,7 +84,6 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
         sheet = client.open_by_key(SHEET_ID).worksheet("github_stargazer_leads")
         records = sheet.get_all_records()
         
-        # Fetch headers exactly ONCE before the loop to save massive API limits
         headers = sheet.row_values(1)
         if "outreach_status" in headers:
             status_col_idx = headers.index("outreach_status") + 1
@@ -103,13 +113,11 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
         bio = str(row.get("bio", "")).strip()
         signal = str(row.get("source_repo", "GitHub")).strip()
         
-        # Guardrail Filter
         if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower():
             continue
         if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested", "AI Generation Failed"]:
             continue
             
-        # --- MESSAGE GENERATION LOGIC ---
         if mode == "✍️ Custom Template":
             if status_container:
                 status_container.info(f"Applying custom template for {username}...")
@@ -118,12 +126,14 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
         else:
             if status_container:
                 status_container.info(f"Drafting AI payload for {username}...")
-            subject, body = generate_personalized_payload(username, signal, bio)
+                
+            subject, body, error_msg = generate_personalized_payload(username, signal, bio)
             
             if not subject or not body:
                 if status_container:
-                    status_container.error(f"AI failed to generate quality email for {username}. Skipping to protect brand.")
-                # Update status and sleep briefly to prevent rapid-fire API ban
+                    # NOW IT TELLS YOU EXACTLY WHY IT FAILED
+                    status_container.error(f"Failed on {username} | {error_msg}")
+                    
                 if status_col_idx:
                     try:
                         sheet.update_cell(idx + 2, status_col_idx, "AI Generation Failed")
@@ -132,7 +142,6 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
                         pass
                 continue
         
-        # --- EMAIL DISPATCH ---
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = prospect_email
@@ -151,18 +160,15 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
             
             emails_fired += 1
             
-            # Update CRM efficiently
             if status_col_idx:
                 sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
                 
-            # Log to History
             try:
                 import zynd_outreach_history
                 zynd_outreach_history.log_outreach_event(username, "Abhinav", "Email", "Initial Pitch", f"Sent to: {prospect_email} | Subject: {subject}")
             except Exception:
                 pass
             
-            # EXTREME STEALTH DELAY
             if emails_fired < max_emails:
                 delay = random.randint(120, 300) 
                 if status_container:
