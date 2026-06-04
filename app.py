@@ -833,17 +833,34 @@ elif menu == "⚙️ Control Room":
 
             with st.container(border=True):
                 st.subheader("📡 Automated Stealth Email Dispatcher")
-                st.write("Fires hyper-personalized sequences to scripter/stargazer logs containing public emails.")
+                st.write("Fires personalized sequences to scripter logs containing public emails.")
+                
+                # New Template UI Engine
+                email_mode = st.radio("Outreach Generation Mode", ["🧠 AI Personalized", "✍️ Custom Template"], horizontal=True)
+                
+                custom_subj = ""
+                custom_msg = ""
+                
+                if email_mode == "✍️ Custom Template":
+                    st.info("Variables you can use: `{name}`, `{repo}`, `{bio}`")
+                    custom_subj = st.text_input("Subject Line", "Quick question about {repo}")
+                    custom_msg = st.text_area("Email Body", "Hey {name},\n\nSaw you contributing to {repo}. I'm working on a platform called Zynd for AI agents...\n\nCheers,\nAbhinav", height=150)
                 
                 email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 20, 5, key="email_broadcast_cap")
-                status_placeholder = st.empty() # Creates a space for live text updates
+                status_placeholder = st.empty() 
                 
                 if st.button("🚀 Initialize Email Outreach Matrix", type="primary", use_container_width=True):
-                    with st.spinner("Executing sequence... Do not close this tab."):
+                    with st.spinner("Executing sequence... Do not close this tab. Stealth delays are active."):
                         import zynd_email_dispatcher
-                        sent_count, msg = zynd_email_dispatcher.dispatch_campaign(max_emails=email_cap, status_container=status_placeholder)
+                        sent_count, msg = zynd_email_dispatcher.dispatch_campaign(
+                            max_emails=email_cap, 
+                            mode=email_mode,
+                            custom_subject=custom_subj,
+                            custom_body=custom_msg,
+                            status_container=status_placeholder
+                        )
                         
-                        status_placeholder.empty() # Clear the live updates when finished
+                        status_placeholder.empty() 
                         if sent_count > 0:
                             st.success(f"Success! Safely deployed {sent_count} tracking payloads.")
                             st.info(msg)

@@ -13,26 +13,30 @@ SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
 
 def generate_personalized_payload(prospect_name, context_signal, bio):
-    """Hits OpenRouter to craft a completely unique cold email based on user metadata."""
+    """Hits OpenRouter to craft a high-converting, peer-to-peer cold email."""
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     
     prompt = f"""
-    You are a technical founder contacting an open-source engineer. Write a highly personalized, casual, short cold email.
-    Prospect Name: {prospect_name}
-    Signal Caught: {context_signal}
-    Prospect Bio: {bio}
+    Act as Abhinav, a technical founder building Zynd. Write a cold email to a developer.
     
-    Rules:
-    1. Keep it under 4 sentences. Sound like a engineer, not a marketer.
-    2. Mention their specific work/signal casually.
-    3. Pitch Zynd: A devtool/growth workspace that helps autonomous AI agents get discovered and integrated.
-    4. End with a low-friction question.
-    5. Return a strict raw string in this EXACT layout format:
-    SUBJECT: [Insert Subject Line Here]
-    BODY: [Insert Email Body Here]
+    Lead Name: {prospect_name}
+    Repo/Signal they interacted with: {context_signal}
+    Their Bio: {bio}
+    
+    Guidelines for the email:
+    1. Tone: Peer-to-peer, relaxed, engineer-to-engineer. Do NOT sound like a marketer. Use lowercase for casualness where appropriate.
+    2. Length: 3-4 short paragraphs maximum. Highly readable.
+    3. Content: 
+       - Acknowledge their specific work or interaction with {context_signal}.
+       - Briefly mention Zynd: "we're building a workspace for autonomous AI agents to get discovered and integrated."
+       - Soft call to action: "Would love to get your eyes on it" or "Any interest in taking a quick look?"
+    
+    You MUST return the output in exactly this format with no other text:
+    SUBJECT: [Your Subject Line]
+    BODY: [Your Email Body]
     """
     
     data = {
@@ -41,22 +45,21 @@ def generate_personalized_payload(prospect_name, context_signal, bio):
     }
     
     try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=15)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=20)
         if response.status_code == 200:
             ai_text = response.json()['choices'][0]['message']['content']
             if "SUBJECT:" in ai_text and "BODY:" in ai_text:
                 subject = ai_text.split("SUBJECT:")[1].split("BODY:")[0].strip()
                 body = ai_text.split("BODY:")[1].strip()
                 return subject, body
-        return "Quick question regarding your agent work", f"Hey {prospect_name},\n\nI saw your work on GitHub. I'm building Zynd to help agents get discovered. Let me know if you're open to a quick look."
+        return None, None # Return None if AI fails so we don't send a garbage fallback
     except Exception:
-        return "Quick question regarding your agent work", f"Hey {prospect_name},\n\nI saw your work on GitHub. I'm building Zynd to help agents get discovered. Let me know if you're open to a quick look."
+        return None, None
 
-def dispatch_campaign(max_emails=10, status_container=None):
-    """Scans databases, drafts personalization layers, fires via SMTP, and logs updates."""
-    # Validate Secrets immediately to prevent crashes
+def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", custom_body="", status_container=None):
+    """Scans databases, applies chosen template/AI, fires via SMTP, and logs updates."""
     if "smtp" not in st.secrets:
-        return 0, "Error: [smtp] secrets block is missing from Streamlit Cloud."
+        return 0, "Error: [smtp] secrets block is missing."
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -87,13 +90,29 @@ def dispatch_campaign(max_emails=10, status_container=None):
         # Guardrail Filter
         if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower():
             continue
-        if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested"]:
+        if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested", "AI Generation Failed"]:
             continue
             
-        if status_container: status_container.info(f"Drafting AI payload for {username}...")
+        # --- MESSAGE GENERATION LOGIC ---
+        if mode == "Custom Template":
+            if status_container: status_container.info(f"Applying custom template for {username}...")
+            # Inject variables into the user's template
+            subject = custom_subject.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
+            body = custom_body.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
+        else:
+            if status_container: status_container.info(f"Drafting AI payload for {username}...")
+            subject, body = generate_personalized_payload(username, signal, bio)
+            
+            # If AI fails, skip this lead and mark it so we don't send a bad email
+            if not subject or not body:
+                if status_container: status_container.error(f"AI failed to generate quality email for {username}. Skipping to protect brand.")
+                row_num = idx + 2
+                headers = sheet.row_values(1)
+                if "outreach_status" in headers:
+                    sheet.update_cell(row_num, headers.index("outreach_status") + 1, "AI Generation Failed")
+                continue
         
-        subject, body = generate_personalized_payload(username, signal, bio)
-        
+        # --- EMAIL DISPATCH ---
         msg = MIMEMultipart()
         msg['From'] = sender_email
         msg['To'] = prospect_email
@@ -123,10 +142,10 @@ def dispatch_campaign(max_emails=10, status_container=None):
             except Exception:
                 pass
             
-            # Strict Jitter Delays (Live UI update so the user doesn't think the app broke)
+            # EXTREME STEALTH DELAY (2 to 5 minutes between emails to prevent account bans)
             if emails_fired < max_emails:
-                delay = random.randint(30, 75)
-                if status_container: status_container.success(f"Email sent! Waiting {delay} seconds to bypass ISP spam filters...")
+                delay = random.randint(120, 300) 
+                if status_container: status_container.success(f"Email sent! Human emulation active: Sleeping for {delay} seconds to bypass ISP spam filters...")
                 time.sleep(delay)
                 
         except Exception as e:
