@@ -830,6 +830,23 @@ elif menu == "⚙️ Control Room":
                             st.success(f"Deployed {len(results)} payloads successfully!")
                             for res in results:
                                 st.markdown(res)
+
+            with st.container(border=True):
+                st.subheader("📡 Automated Stealth Email Dispatcher")
+                st.write("Fires hyper-personalized sequences to scripter/stargazer logs containing public emails.")
+                
+                email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 20, 5, key="email_broadcast_cap")
+                
+                if st.button("🚀 Initialize Email Outreach Matrix", type="primary", use_container_width=True):
+                    with st.spinner("Warming up sockets... Drafting custom AI payload strings..."):
+                        import zynd_email_dispatcher
+                        sent_count, msg = zynd_email_dispatcher.dispatch_campaign(max_emails=email_cap)
+                        if sent_count > 0:
+                            st.success(f"Success! Safely deployed {sent_count} tracking payloads.")
+                            st.info(msg)
+                            st.cache_data.clear()
+                        else:
+                            st.warning(msg)
                                 
         with ai_col2:
             with st.container(border=True):
