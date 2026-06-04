@@ -53,6 +53,7 @@ def generate_twitter_dm(prospect_name, bio):
 
 def setup_stealth_browser():
     """Configures a headless Chromium instance to bypass bot detection on Linux."""
+    import shutil
     options = Options()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
@@ -68,7 +69,20 @@ def setup_stealth_browser():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
 
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # --- STREAMLIT CLOUD LINUX BYPASS ---
+    # Look for the native Chromium installed via packages.txt to prevent webdriver_manager crashes
+    system_chromedriver = shutil.which("chromedriver")
+    system_chromium = shutil.which("chromium") or shutil.which("chromium-browser")
+
+    if system_chromedriver:
+        # We are running on the Cloud
+        if system_chromium:
+            options.binary_location = system_chromium
+        service = Service(executable_path=system_chromedriver)
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        # Fallback just in case you run this locally on your Mac
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     # Execute JS to hide WebDriver footprint
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
