@@ -868,6 +868,9 @@ elif menu == "⚙️ Control Room":
                         else:
                             st.warning(msg)
 
+            # ==========================================
+            # 🚨 THE NEW C2 CLOUD TRIGGER BLOCK 🚨
+            # ==========================================
             with st.container(border=True):
                 st.subheader("🐦 Local Twitter DM Autopilot")
                 st.write("Triggers your Mac M2's local background worker using your home residential network.")
@@ -884,18 +887,16 @@ elif menu == "⚙️ Control Room":
                 if st.button("📡 Queue Local Dispatcher", use_container_width=True):
                     with st.spinner("Writing sequence instructions to Master Database..."):
                         try:
-                            import gspread
-                            from oauth2client.service_account import ServiceAccountCredentials
-                            
-                            # Connect to sheet
+                            # 1. Connect to sheet
                             scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
                             creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
                             client = gspread.authorize(creds)
                             sheet = client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet("Twitter Leads")
                             
-                            # Add configurations in a specific cell or meta-row to tell the local worker what to do
-                            # For simplicity, we can update a tracking status cell or add a control cell
-                            st.success("🤖 Dispatch signal broadcasted! Start the terminal worker on your Mac to execute.")
+                            # 2. Write "START" to cell Z1 (Row 1, Column 26) to wake up the Mac Worker
+                            sheet.update_cell(1, 26, "START")
+                            
+                            st.success("🤖 Dispatch signal broadcasted! The Mac M2 execution drone has been awakened and is processing leads in the background.")
                         except Exception as e:
                             st.error(f"Failed to communicate with master sheet: {str(e)}")
                                 
