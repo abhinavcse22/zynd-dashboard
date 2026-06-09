@@ -1,0 +1,15 @@
+{
+  "ai engineer": "Build production-grade AI agents that are reliable, scalable, and can be discovered and used by other systems. Want their agents to have a proper identity, endpoint, and way to get paid for compute.",
+  "ml engineer": "Ship ML-powered tools and agents to production. Need distribution channels and monetization without building billing infrastructure from scratch.",
+  "founding engineer": "Move fast - ship agents that work end-to-end including discovery, identity, and payments. Don't want to reinvent the wheel on protocol-level concerns.",
+  "cto": "Make architectural decisions that give the team long-term leverage. Want agents to be composable, discoverable, and monetizable without vendor lock-in.",
+  "software engineer": "Build useful tools and agents. Want their work to be found and used by others, ideally with some economic upside without building a full SaaS.",
+  "solutions architect": "Design multi-agent systems for clients. Need a standard way to make agents interoperable across LangChain, CrewAI, n8n without custom glue code.",
+  "devrel": "Show developers what's possible with the platform. Need working examples that are genuinely useful - not toy demos.",
+  "developer advocate": "Build credibility with the developer community by shipping real, useful integrations and demos.",
+  "indie hacker": "Ship fast, get paid, build in public. Hate billing infrastructure. Want to focus on the agent logic, not the payment rails.",
+  "revops engineer": "Automate the GTM stack using AI. Build workflows that run without manual intervention. Need agents to be reliable and callable by other systems.",
+  "gtm engineer": "Own the technical GTM stack. Build agentic workflows that score leads, enrich data, and trigger outreach. Want agents to be composable.",
+  "n8n": "Build automated workflows using n8n. Want AI agent nodes that are production-ready and can be monetized or shared in the community template library.",
+  "automation engineer": "Build workflows that eliminate manual work at scale. Want AI agent components that are reliable, have proper endpoints, and integrate cleanly."
+}

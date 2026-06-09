@@ -1,0 +1,67 @@
+{
+  "_about": "Zynd.ai is an open agent network - protocol + registry + identity + payment rail - for AI agents built in LangChain, CrewAI, LangGraph, n8n, etc. It gives every agent: (1) a discoverable ZNS name, (2) a verifiable DID identity, (3) pay-per-use x402/USDC micropayments with no Stripe, (4) a hosted HTTPS endpoint via deployer.zynd.ai. The registration wrapper is one line: `pip install zyndai-agent` + register().",
+
+  "agent_builder": {
+    "core_pain": "They built an agent that works but nobody finds it, and they have no way to charge for it without standing up billing infrastructure.",
+    "zynd_angle": "Zynd gives the agent a discoverable ZNS name and a built-in x402 payment rail - so it can earn $0.01-$0.02 per call in USDC the moment someone uses it. No Stripe account needed.",
+    "hook": "30 seconds to wrap, instant distribution, get paid per call - no billing infra.",
+    "message_angle_t1": "Most agents sit on someone's hard drive because there's no distribution layer. Zynd is that layer - one-line registration, ZNS name, and a pay-per-use endpoint.",
+    "message_angle_t2": "You're already building agents. Zynd gives them a proper address, identity, and payment rail so they can earn USDC per call without you building a SaaS around them."
+  },
+
+  "monetization_pain": {
+    "core_pain": "They want to charge for their agent but Stripe requires a full product setup, billing logic, and auth flow.",
+    "zynd_angle": "x402 is HTTP-native pay-per-use: the caller sends USDC on Base, the agent responds. No account creation, no API key management, no Stripe. ~2-second settlement.",
+    "hook": "Get paid per call without a Stripe account - x402 micropayments on Base.",
+    "message_angle_t1": "Charging for an agent with Stripe means building a full SaaS billing layer. x402 makes it HTTP-native: the caller pays USDC, your agent responds. That's it.",
+    "message_angle_t2": "The billing problem for agents is real. x402 + Zynd's payment rail is the zero-friction version - caller pays per call in USDC, you receive it instantly, no account required on either side."
+  },
+
+  "discovery_pain": {
+    "core_pain": "They built an agent but have no way to surface it to other developers or agents that might use it.",
+    "zynd_angle": "Zynd's ZNS is a semantic ML-powered registry - other agents and humans find your agent by describing what they need. Like DNS + Google for agents.",
+    "hook": "Make your agent discoverable via semantic search - like DNS for agents.",
+    "message_angle_t1": "The agent discovery problem is the same one DNS solved for websites. Zynd's ZNS registry gives your agent a permanent, human-readable address that other agents and humans can find via semantic search.",
+    "message_angle_t2": "Distribution for agents is still unsolved for most builders. ZNS is a federated registry where agents get a name like `zns01.zynd.ai/your-handle/agent-name` - discoverable via ML-powered search."
+  },
+
+  "interop_pain": {
+    "core_pain": "They want their LangChain agent to call a CrewAI crew, or their n8n workflow to call an external agent - but there's no standard protocol.",
+    "zynd_angle": "Zynd's network makes cross-framework agent calls possible - a CrewAI agent can hire a LangGraph agent via ZNS without custom integration glue.",
+    "hook": "A CrewAI agent can call a LangGraph agent through Zynd - no custom glue.",
+    "message_angle_t1": "The cross-framework agent call problem - CrewAI talking to LangGraph - is exactly what Zynd's network solves. Every registered agent gets a standard HTTPS endpoint callable from any framework.",
+    "message_angle_t2": "Interop between agent frameworks today means writing custom glue. Zynd makes every registered agent callable via a standard HTTPS endpoint - so your LangChain agent can hire a CrewAI crew without any integration work."
+  },
+
+  "mcp_builder": {
+    "core_pain": "They built an MCP server but it only works in local Claude/cursor setups - no way to expose it as a public, paid API.",
+    "zynd_angle": "Any MCP server wraps to Zynd in one line - gets a ZNS name, a public HTTPS endpoint via deployer.zynd.ai, and x402 payments for every tool call.",
+    "hook": "Your MCP server becomes a public paid endpoint in one line.",
+    "message_angle_t1": "MCP servers are powerful but currently locked to local environments. Zynd's deployer gives any MCP server a public HTTPS endpoint + pay-per-call USDC billing in under a minute.",
+    "message_angle_t2": "Your MCP server already does the hard work. Zynd wraps it into a public endpoint with a ZNS name and x402 payments - so other agents and devs can find and pay for your tools."
+  },
+
+  "n8n_builder": {
+    "core_pain": "They build n8n workflows with AI nodes but can't expose them as reusable, paid APIs that other systems can call.",
+    "zynd_angle": "Zynd ships `n8n-nodes-zyndai` natively - every n8n workflow with AI nodes can register on Zynd and become a callable, paid endpoint in minutes.",
+    "hook": "n8n workflows register directly on Zynd - native integration, one step.",
+    "message_angle_t1": "n8n workflows are incredibly useful but hard to expose as reusable APIs. Zynd's n8n-nodes-zyndai integration lets your AI workflows register directly on the network - callable and paid per use.",
+    "message_angle_t2": "If you're building AI workflows in n8n, Zynd has a native integration - n8n-nodes-zyndai - that registers your workflow on the agent network so others can discover and call it with USDC micropayments."
+  },
+
+  "web3_builder": {
+    "core_pain": "They're comfortable with crypto/USDC but their AI agents have no native payment mechanism.",
+    "zynd_angle": "x402 is exactly what they already understand - HTTP 402 + USDC on Base, 2-second finality, Coinbase co-developed. Zynd is the agent layer on top of that.",
+    "hook": "x402 + USDC + Base - your agents get native on-chain payments.",
+    "message_angle_t1": "x402 is the payment standard your AI agents have been missing - HTTP-native, USDC on Base, 2-second finality. Zynd puts that rail under your agents with one registration call.",
+    "message_angle_t2": "If you're already building on Base and comfortable with USDC, Zynd's x402 payment rail plugs directly into your AI agents - they earn per call with no Stripe, no account management."
+  },
+
+  "revops_gtm": {
+    "core_pain": "They build AI-powered GTM workflows but each agent is a one-off, not reusable or callable by other parts of their stack.",
+    "zynd_angle": "Zynd turns their agentic workflows into reusable, addressable endpoints that other workflow components can call via ZNS - making the entire GTM stack composable.",
+    "hook": "Make your AI GTM workflows composable - callable by any other agent.",
+    "message_angle_t1": "GTM stacks built on Clay+n8n+OpenAI are powerful but siloed. Zynd makes each AI workflow component a reusable agent with a ZNS address - so your scoring agent, enrichment agent, and outreach agent can actually call each other.",
+    "message_angle_t2": "The next step for AI-powered GTM stacks is composability - agents calling agents. Zynd gives every workflow component an address and a payment rail so your stack can orchestrate itself."
+  }
+}
