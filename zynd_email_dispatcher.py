@@ -13,63 +13,62 @@ from oauth2client.service_account import ServiceAccountCredentials
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
 def generate_personalized_payload(prospect_name, context_signal, bio):
-    """Hits OpenRouter and uses robust Regex to extract the subject and body."""
+    """Generates a high-conversion, value-first technical email."""
     OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     
+    # THE "TECHNICAL PEER" FORMULA
     prompt = f"""
-    Act as Abhinav, a technical founder building Zynd. Write a cold email to a developer.
+    You are Abhinav, a fellow developer and founder of Zynd (a workspace for AI agent orchestration).
     
     Lead Name: {prospect_name}
-    Repo/Signal they interacted with: {context_signal}
-    Their Bio: {bio}
+    Signal: {context_signal}
+    Bio/Context: {bio}
     
-    Guidelines for the email:
-    1. Tone: Peer-to-peer, relaxed, engineer-to-engineer. Do NOT sound like a marketer. Use lowercase for casualness where appropriate.
-    2. Length: 3-4 short paragraphs maximum. Highly readable.
-    3. Content: 
-       - Acknowledge their specific work or interaction with {context_signal}.
-       - Briefly mention Zynd: "we're building a workspace for autonomous AI agents to get discovered and integrated."
-       - Soft call to action: "Would love to get your eyes on it" or "Any interest in taking a quick look?"
+    DRAFT A COLD EMAIL USING THIS EXACT FORMULA:
+    1. SUBJECT: [3-4 words, lowercase, specific to their repo/signal]
+    2. BODY:
+       hey {prospect_name},
+       
+       [1 observation about their specific tech stack/work on {context_signal}]
+       
+       [1 technical insight about how you solved a similar problem at Zynd]
+       
+       [The Ask: A specific, low-friction technical question, NOT a meeting request]
+       
+       cheers,
+       abhinav
     
-    You MUST return the output in exactly this format with no other text or markdown blocks:
-    SUBJECT: [Your Subject Line]
-    BODY: [Your Email Body]
+    STRICT RULES:
+    - ALL LOWERCASE. No capital letters.
+    - NO MARKETING FLUFF. Banned words: "seamless", "experience", "leverage", "platform", "comprehensive".
+    - DO NOT ask for a call, a demo, or a "quick chat".
+    - The CTA must be a question about their code or build process (e.g., "what are you using for your llm routing right now?").
+    - MAX 50 WORDS.
     """
     
-    # Swapped to a highly reliable model string just in case the previous one was timing out
     data = {
-        "model": "openai/gpt-4o-mini", 
-        "messages": [{"role": "user", "content": prompt}]
+        "model": "anthropic/claude-3-haiku", # Claude-3-Haiku is significantly more human/casual than GPT
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3
     }
     
     try:
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=20)
+        ai_text = response.json()['choices'][0]['message']['content'].strip()
         
-        if response.status_code != 200:
-            return None, None, f"OpenRouter API Error {response.status_code}: {response.text}"
-            
-        ai_text = response.json()['choices'][0]['message']['content']
-        
-        # Clean up potential markdown blocks from the LLM
-        ai_text = ai_text.replace("```text", "").replace("```", "").replace("**", "").strip()
-        
-        # BULLETPROOF REGEX PARSING (Case-insensitive)
+        # Robust parsing
         subject_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
         body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
         
         if subject_match and body_match:
-            subject = subject_match.group(1).strip()
-            body = body_match.group(1).strip()
-            return subject, body, None
-        else:
-            return None, None, f"AI ignored formatting rules. Raw output preview: {ai_text[:100]}..."
-            
+            return subject_match.group(1).strip(), body_match.group(1).strip(), None
+        return None, None, "AI format error"
     except Exception as e:
-        return None, None, f"API Connection Timeout/Failure: {str(e)}"
+        return None, None, str(e)
 
 def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", custom_body="", status_container=None):
     """Scans databases, applies chosen template/AI, fires via SMTP, and logs updates safely."""
