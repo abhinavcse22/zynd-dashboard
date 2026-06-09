@@ -884,21 +884,31 @@ elif menu == "⚙️ Control Room":
                 
                 twitter_cap = st.slider("Max DMs to Dispatch", 1, 15, 3, key="twitter_cap")
                 
-                if st.button("📡 Queue Local Dispatcher", use_container_width=True):
-                    with st.spinner("Writing sequence instructions to Master Database..."):
-                        try:
-                            # 1. Connect to sheet
-                            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-                            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
-                            client = gspread.authorize(creds)
-                            sheet = client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet("Twitter Leads")
-                            
-                            # 2. Write "START" to cell Z1 (Row 1, Column 26) to wake up the Mac Worker
-                            sheet.update_cell(1, 26, "START")
-                            
-                            st.success("🤖 Dispatch signal broadcasted! The Mac M2 execution drone has been awakened and is processing leads in the background.")
-                        except Exception as e:
-                            st.error(f"Failed to communicate with master sheet: {str(e)}")
+                import requests # Make sure this is imported at the top of app.py
+
+# ... down in your UI where the button is ...
+st.markdown("### 🚀 Dispatch Campaign")
+max_dms_input = st.slider("Max DMs to send this batch", 1, 20, 5)
+
+if st.button("📡 Trigger Local Execution Node"):
+    with st.spinner("Firing webhook to local Mac..."):
+        try:
+            # The payload matches the FastAPI model we just built
+            payload = {
+                "max_dms": max_dms_input,
+                "sheet_tab": "Twitter Leads" 
+            }
+            
+            # Ping the local FastAPI server
+            response = requests.post("http://localhost:8000/dispatch", json=payload, timeout=5)
+            
+            if response.status_code == 200:
+                st.success("✅ Webhook fired successfully! Your Mac is now executing the campaign in the background.")
+            else:
+                st.error(f"⚠️ Webhook failed. Server responded: {response.text}")
+                
+        except requests.exceptions.ConnectionError:
+            st.error("🚨 Connection Refused: Is your Mac Worker currently running? (Run `python mac_worker_2.py` in your terminal).")
                                 
         with ai_col2:
             with st.container(border=True):
