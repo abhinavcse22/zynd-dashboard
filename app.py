@@ -5,6 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import plotly.express as px
 import math 
+import requests
 
 # --- IMPORT ENGINES ---
 import zynd_leads
@@ -882,34 +883,33 @@ elif menu == "⚙️ Control Room":
                     st.info("Variables you can use: `{name}`, `{bio}`")
                     tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space...", height=100)
                 
-                twitter_cap = st.slider("Max DMs to Dispatch", 1, 15, 3, key="twitter_cap")
-                
-                import requests # Make sure this is imported at the top of app.py
+                st.markdown("### 🚀 Dispatch Campaign")
+                max_dms_input = st.slider("Max DMs to send this batch", 1, 20, 5, key="twitter_cap")
+                worker_url = st.text_input("🔗 Local Worker Tunnel URL (ngrok)", value="http://localhost:8000")
 
-# ... down in your UI where the button is ...
-st.markdown("### 🚀 Dispatch Campaign")
-max_dms_input = st.slider("Max DMs to send this batch", 1, 20, 5)
-
-if st.button("📡 Trigger Local Execution Node"):
-    with st.spinner("Firing webhook to local Mac..."):
-        try:
-            # The payload matches the FastAPI model we just built
-            payload = {
-                "max_dms": max_dms_input,
-                "sheet_tab": "Twitter Leads" 
-            }
-            
-            # Ping the local FastAPI server
-            response = requests.post("http://localhost:8000/dispatch", json=payload, timeout=5)
-            
-            if response.status_code == 200:
-                st.success("✅ Webhook fired successfully! Your Mac is now executing the campaign in the background.")
-            else:
-                st.error(f"⚠️ Webhook failed. Server responded: {response.text}")
-                
-        except requests.exceptions.ConnectionError:
-            st.error("🚨 Connection Refused: Is your Mac Worker currently running? (Run `python mac_worker_2.py` in your terminal).")
+                if st.button("📡 Trigger Local Execution Node", type="primary", use_container_width=True):
+                    with st.spinner("Firing webhook to local Mac..."):
+                        try:
+                            # The payload matches the FastAPI model we just built
+                            payload = {
+                                "max_dms": max_dms_input,
+                                "sheet_tab": "Twitter Leads" 
+                            }
+                            
+                            # Ping the local FastAPI server
+                            target_endpoint = f"{worker_url.rstrip('/')}/dispatch"
+                            response = requests.post(target_endpoint, json=payload, timeout=5)
+                            
+                            if response.status_code == 200:
+                                st.success("✅ Webhook fired successfully! Your Mac is now executing the campaign in the background.")
+                            else:
+                                st.error(f"⚠️ Webhook failed. Server responded: {response.text}")
                                 
+                        except requests.exceptions.ConnectionError:
+                            st.error("🚨 Connection Refused: Is your Mac Worker currently running? (Run `python mac_worker_2.py` in your terminal).")
+                        except requests.exceptions.MissingSchema:
+                            st.error("🚨 Invalid URL: Make sure it starts with http:// or https://")
+                                        
         with ai_col2:
             with st.container(border=True):
                 st.subheader("🧠 Pro AI Drafter")
