@@ -28,6 +28,13 @@ def push_to_sheet(lead):
     sheet.append_row(row)
 
 def run(dry_run=False, limit=None, signal_filter=None):
+    print("DEBUG: Starting LinkedIn Run")
+    print(f"DEBUG: Loaded {len(config.POST_SIGNAL_KEYWORDS)} signals")
+    
+    signals = {k: v for k, v in config.POST_SIGNAL_KEYWORDS.items() if not k.startswith("_")}
+    if not signals:
+        print("DEBUG CRITICAL: No signals loaded from JSON!")
+        return []
     # Logic to filter signals
     signals = {k: v for k, v in config.POST_SIGNAL_KEYWORDS.items() if not k.startswith("_")}
     if signal_filter:
