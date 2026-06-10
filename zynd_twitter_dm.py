@@ -159,26 +159,43 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
     
     try:
         sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
-        raw_data = sheet.get_all_records()
-        status_col_name = next((h for h in ["outreach_status", "Status", "status"] if h in raw_data[0].keys()), None)
+        # --- ROBUST HEADER PROCESSING ---
+        all_rows = sheet.get_all_values()
+        if not all_rows or len(all_rows) < 2: return 0, "No leads found."
+        
+        # Manually process headers and map them to rows, ignoring empty cells
+        raw_headers = all_rows[0]
+        headers = [f"Col_{i}" if not str(h).strip() else str(h).strip() for i, h in enumerate(raw_headers)]
+        
+        records = []
+        for row in all_rows[1:]:
+            # Pad row if shorter than headers
+            padded_row = row + [""] * (len(headers) - len(row))
+            records.append(dict(zip(headers, padded_row)))
+        
+        # Find status column by name (case insensitive)
+        status_col_name = next((h for h in headers if h.lower() in ["outreach_status", "status", "dm status"]), None)
     except Exception as e:
         return 0, f"Database Error: {str(e)}"
         
     dms_fired = 0
     driver = None
     
-    for idx, row in enumerate(raw_data):
+    for idx, row in enumerate(records):
         if dms_fired >= max_dms: break
             
-        raw_handle = str(row.get("Tweet URL", row.get("Username", row.get("handle", "")))).strip()
+        # Standardize handle retrieval
+        raw_handle = str(row.get("Tweet URL") or row.get("Username") or row.get("handle") or row.get("User") or "").strip()
         handle = raw_handle.replace("@", "").split("?")[0].strip()
         status = str(row.get(status_col_name, "")).strip().lower() if status_col_name else ""
         
-        if not handle or "http" in handle or "sent" in status: continue
+        if not handle or "http" in handle or "sent" in status or "failed" in status: continue
             
+        # Draft Message
         message = custom_msg.replace("{name}", handle) if mode == "✍️ Custom Template" else generate_twitter_dm(handle, row.get("bio", ""), status_container)
         if not message: continue
             
+        # Browser Delivery
         if not driver:
             if status_container: status_container.warning("Booting Stealth Browser...")
             driver = setup_stealth_browser()
@@ -187,11 +204,9 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             driver.add_cookie({'name': 'ct0', 'value': tw_ct0, 'domain': '.x.com', 'path': '/', 'secure': True})
 
         try:
-            # FIX: We now include status_container here
             try_browser_send(driver, handle, message, status_container)
-            
             dms_fired += 1
-            if status_col_name: sheet.update_cell(idx + 2, list(row.keys()).index(status_col_name) + 1, "DM Sent")
+            if status_col_name: sheet.update_cell(idx + 2, headers.index(status_col_name) + 1, "DM Sent")
             if status_container: status_container.success(f"✅ Sent to @{handle}.")
             time.sleep(random.randint(45, 90))
         except Exception as e:
