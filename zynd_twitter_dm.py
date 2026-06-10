@@ -16,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from selenium_stealth import stealth
+from selenium.webdriver.common.action_chains import ActionChains
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -92,71 +93,82 @@ def setup_stealth_browser():
 
 def try_browser_send(driver, handle, message, status_container):
     try:
-        # 1. Human Emulation: Navigate to the Profile Page first
+        # 1. Profile Routing (The Human Way)
         driver.get(f"https://x.com/{handle}")
-        time.sleep(random.uniform(6.0, 9.0)) # Wait for profile to render
+        time.sleep(random.uniform(6.0, 9.0))
         
         if status_container: status_container.info(f"Scanning @{handle}'s profile for DM button...")
 
-        # 2. Look for the Send DM Button on the profile
+        # 2. Click DM Button on Profile
         try:
             dm_btn = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="sendDMFromProfile"]'))
             )
             driver.execute_script("arguments[0].click();", dm_btn)
         except:
-            raise Exception("No DM button found on profile. DMs are likely closed for this user.")
+            raise Exception("No DM button found. DMs are closed or they do not follow you.")
 
-        time.sleep(random.uniform(2.0, 4.0))
+        time.sleep(random.uniform(3.0, 5.0))
 
-        # 3. Destroy Annoying Tooltips/Popups that block the chat box
+        # 3. Safely Close Tooltips (Without destroying the chat box)
         try:
-            close_buttons = driver.find_elements(By.CSS_SELECTOR, 'div[role="dialog"] div[aria-label="Close"]')
-            for btn in close_buttons: driver.execute_script("arguments[0].click();", btn)
+            driver.execute_script("""
+                let closeBtns = document.querySelectorAll('div[aria-label="Close"]');
+                closeBtns.forEach(b => b.click());
+            """)
         except: pass
 
-        # 4. Wait for the exact textarea your local script used
+        # 4. Target the Draft.js framework directly (Discovered from your HTML logs)
+        selectors = [
+            'div[data-testid="dmComposerTextInput"]',
+            'div.public-DraftEditor-content',
+            'aside[aria-label="Start a new message"] div[role="textbox"]',
+            'div[role="textbox"]'
+        ]
+        
         message_box = None
-        try:
-            message_box = WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'textarea[data-testid="dm-composer-textarea"]'))
-            )
-            # Ensure it is actually interactable
-            WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'textarea[data-testid="dm-composer-textarea"]'))
-            )
-        except:
-            raise Exception("Clicked DM button, but the chat modal failed to render.")
-        
-        # 5. Emulate human typing
-        if status_container: status_container.info(f"Typing payload to @{handle}...")
-        for char in message:
-            message_box.send_keys(char)
-            time.sleep(random.uniform(0.01, 0.05))
+        for selector in selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                for el in elements:
+                    if el.is_displayed():
+                        message_box = el
+                        break
+                if message_box: break
+            except: pass
             
-        time.sleep(random.uniform(1.0, 2.0))
+        if not message_box:
+            raise Exception("Chat interface failed to render. Twitter layout shifted.")
+            
+        if status_container: status_container.info(f"Typing payload to @{handle}...")
         
-        # 6. Execute Send via RETURN key (proven by your local script)
-        message_box.send_keys(Keys.RETURN)
+        # 5. Type and Send (with bulletproof ActionChains fallback)
+        try:
+            # Force focus using JavaScript
+            driver.execute_script("arguments[0].focus();", message_box)
+            time.sleep(0.5)
+            
+            for char in message:
+                message_box.send_keys(char)
+                time.sleep(random.uniform(0.01, 0.05))
+                
+            time.sleep(1.0)
+            message_box.send_keys(Keys.RETURN)
+        except:
+            # Absolute Fallback: If standard send_keys fails, force typing via ActionChains
+            ActionChains(driver).send_keys(message).send_keys(Keys.RETURN).perform()
             
         time.sleep(random.uniform(3.0, 4.5))
         return True
         
     except Exception as e:
-        # VISUAL DIAGNOSTIC CAPTURE
         try:
             driver.save_screenshot("cloud_browser_debug.png")
-            if status_container:
-                status_container.image("cloud_browser_debug.png", caption=f"What the Cloud Browser sees for @{handle}")
-        except:
-            pass
+            if status_container: status_container.image("cloud_browser_debug.png")
+        except: pass
             
         current_url = driver.current_url
-        page_source_snippet = driver.page_source[:500] if driver.page_source else "No source available"
-        error_trace = traceback.format_exc()
-        
-        diagnostic_msg = f"**Current URL:** {current_url}\n\n**Error:** {str(e)}"
-        raise Exception(diagnostic_msg)
+        raise Exception(f"**Current URL:** {current_url}\n\n**Error:** {str(e)}")
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
     tw_auth = st.secrets.get("twitter", {}).get("auth_token", "")
