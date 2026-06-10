@@ -7,26 +7,27 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 "Caveman" Queries: No 'site:', no quotes, no advanced operators.
-# This completely bypasses the Serper.dev free tier paywall.
+# 🎯 Free-Tier Friendly Raw Queries (Broad terms to maximize return payload size)
 SERPER_DORKS = [
-    'linkedin.com/in LangGraph founder',
-    'linkedin.com/in LangGraph indie hacker',
-    'linkedin.com/in built with LangGraph',
-    'linkedin.com/in CrewAI founder',
-    'linkedin.com/in CrewAI indie hacker',
-    'linkedin.com/in built with CrewAI',
-    'linkedin.com/in n8n AI Automation',
-    'linkedin.com/in n8n founder',
-    'linkedin.com/in building an AI agent',
-    'linkedin.com/in MCP server founder'
+    'linkedin.com/in LangGraph',
+    'linkedin.com/in CrewAI',
+    'linkedin.com/in n8n workflow',
+    'linkedin.com/in AI automation agency',
+    'linkedin.com/in building AI agents',
+    'linkedin.com/in MCP server',
+    'linkedin.com/in LangChain agent'
 ]
 
-# 🛑 The Employee Blacklist (Python handles what the API won't)
+# 🛑 Employee Blacklist: Only block people employed by the core software providers
 BLACKLIST_PHRASES = [
-    "at langchain", "at crewai", "founder of crewai", "at n8n", 
-    "working at", "employed at", "software engineer at langchain",
-    "software engineer", "developer at"
+    "at langchain", "at crewai", "at n8n", "at openai", "at anthropic",
+    "langchain employee", "crewai employee", "n8n employee"
+]
+
+# 🎯 Founder/Builder Whitelist: Python forces matches to fit your exact cohort personas
+WHITELIST_WORDS = [
+    "founder", "co-founder", "ceo", "cto", "owner", "indie", "hacker", 
+    "agency", "freelancer", "solopreneur", "builder", "creator", "stealth"
 ]
 
 def run_linkedin_scraper():
@@ -59,17 +60,17 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Secure. Booting Raw Text API Pipeline...")
+    st.success("✅ Secure. Booting Target Matching Pipeline...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
     for query in SERPER_DORKS:
-        st.text(f"↳ Routing Raw Query: {query}")
+        st.text(f"↳ Gathering Raw Payload: {query}")
         try:
             url = "https://google.serper.dev/search"
             payload = {
                 "q": query,
-                "num": 40  # Safely pulling 40 results per simple query
+                "num": 50  # 🔥 Maximizing pull capacity to 50 results per query block!
             }
             headers = {
                 'X-API-KEY': serper_key,
@@ -79,20 +80,18 @@ def run_linkedin_scraper():
             response = requests.post(url, headers=headers, json=payload, timeout=20)
             
             if response.status_code != 200:
-                st.warning(f"    ↳ API Error: {response.text}")
                 continue
                 
             data = response.json()
             organic_results = data.get("organic", [])
             
             if not organic_results:
-                st.text("    ↳ ⚠️ 0 results returned from Google.")
                 continue
 
             for result in organic_results:
                 profile_url = result.get("link", "").strip()
                 
-                # 🛡️ Because we dropped 'site:', we MUST force Python to check if the link is actually LinkedIn!
+                # Link Verification & Deduplication
                 if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                 
@@ -102,15 +101,26 @@ def run_linkedin_scraper():
                 snippet = result.get("snippet", "")
                 clean_bio = str(snippet).replace('\n', ' ')[:300]
                 
-                # 🛑 Python executes the Blacklist Filter
+                # Normalize context strings for deep filtering
+                match_context = (raw_title + " " + clean_bio).lower()
+                
+                # 🛑 Filter 1: Check Employee Blacklist
                 is_employee = False
                 for blacklisted in BLACKLIST_PHRASES:
-                    if blacklisted in clean_bio.lower() or blacklisted in raw_title.lower():
+                    if blacklisted in match_context:
                         is_employee = True
                         break
-                        
                 if is_employee:
-                    continue  # Skip this person, they triggered the blacklist
+                    continue  # Skip corporate platform staff
+                
+                # 🎯 Filter 2: Enforce Target Whitelist (Isolates founders/builders)
+                is_target_persona = False
+                for word in WHITELIST_WORDS:
+                    if word in match_context:
+                        is_target_persona = True
+                        break
+                if not is_target_persona:
+                    continue  # Skip users who are not founders or active builders
                 
                 new_leads.append([
                     "Serper Free Engine", 
@@ -121,10 +131,10 @@ def run_linkedin_scraper():
                     query, 
                     clean_bio, 
                     today_str, 
-                    9
+                    9  # Premium lead score matching monetization sprint metrics
                 ])
                 existing_urls.add(profile_url.lower())
-                st.text(f"    ↳ ✅ Sniped Verified Founder: {name}")
+                st.text(f"    ↳ ✅ Sniped Target Founder: {name}")
                 
             time.sleep(1.0)
                 
@@ -132,9 +142,9 @@ def run_linkedin_scraper():
             st.warning(f"⚠️ Search Error: {str(e)}")
 
     if new_leads:
-        st.success(f"⬆️ Uploading {len(new_leads)} highly-targeted leads to Database...")
+        st.success(f"I/O Update: Uploading {len(new_leads)} highly-targeted founders to Database...")
         sheet.append_rows(new_leads)
         return len(new_leads)
         
-    st.error("🛑 Scan Complete. 0 new leads found.")
+    st.error("🛑 Scan Complete. No new unique targets found in this execution window.")
     return 0
