@@ -16,6 +16,7 @@ python-dotenv>=1.0.0
 beautifulsoup4
 feedparser
 duckduckgo-search
+googlesearch-python
 
 # --- AI & LLM Orchestration ---
 google-generativeai
