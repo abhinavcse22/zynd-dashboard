@@ -3,27 +3,20 @@ from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from duckduckgo_search import DDGS
 from googlesearch import search
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 1. Google Dorks (Deep index, but strict rate limits)
-GOOGLE_QUERIES = [
-    'site:linkedin.com/posts/ "LangGraph" (stuck OR error)',
-    'site:linkedin.com/posts/ "CrewAI" (framework OR issue)',
-    'site:linkedin.com/posts/ "n8n" "workflow automation"'
-]
-
-# 2. DuckDuckGo Queries (Bypasses site filters using URL matches)
-DDG_QUERIES = [
-    '"linkedin.com/posts/" "LangGraph" error',
-    '"linkedin.com/posts/" "CrewAI" framework',
-    '"linkedin.com/posts/" "n8n" automation'
+# 🔥 The Fix: Target Public Profiles (/in/) instead of Posts.
+# Google indexes Profiles perfectly, but hides Posts from search engines.
+GOOGLE_DORKS = [
+    'site:linkedin.com/in/ "LangGraph" (engineer OR builder OR developer)',
+    'site:linkedin.com/in/ "CrewAI" (founder OR developer OR engineer)',
+    'site:linkedin.com/in/ "n8n" "AI agent"',
+    'site:linkedin.com/in/ "building an AI agent"'
 ]
 
 def run_linkedin_scraper():
-    # DIAGNOSTIC UI LOGGING
     st.info("🔌 Authenticating Database Connection...")
     
     try:
@@ -37,74 +30,61 @@ def run_linkedin_scraper():
             sheet = client.open_by_key(SHEET_ID).add_worksheet(title="LinkedIn Leads", rows="1000", cols="9")
             sheet.append_row(["Source", "Platform", "Username/Name", "Profile URL", "Post URL", "Query Used", "Snippet", "Date Found", "Lead Score"])
         
+        # Extract existing URLs to prevent duplicates
         raw_data = sheet.get_all_values()
         existing_urls = set()
-        if len(raw_data) > 0 and 'Post URL' in raw_data[0]:
-            url_idx = raw_data[0].index('Post URL')
+        if len(raw_data) > 0 and 'Profile URL' in raw_data[0]:
+            url_idx = raw_data[0].index('Profile URL')
             existing_urls = {str(row[url_idx]).lower().strip() for row in raw_data[1:] if len(row) > url_idx}
             
     except Exception as e:
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Database Secure. Booting Dual-Scrape Engines...")
+    st.success("✅ Database Secure. Booting Google Profile Sniper...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # --- ENGINE 1: DUCKDUCKGO (Fastest, avoids IP Bans) ---
-    st.write("🦆 **Booting Engine 1: DuckDuckGo...**")
-    try:
-        with DDGS() as ddgs:
-            for query in DDG_QUERIES:
-                st.text(f"↳ Scanning: {query}")
-                results = list(ddgs.text(query, max_results=3))
+    # --- GOOGLE NATIVE ENGINE ---
+    for query in GOOGLE_DORKS:
+        st.text(f"↳ Deep Scanning Index: {query}")
+        try:
+            # advanced=True gets us the titles (names) and descriptions (bios)
+            for result in search(query, num_results=6, sleep_interval=3, advanced=True):
+                profile_url = getattr(result, 'url', '').strip()
                 
-                if not results:
-                    st.text("    ↳ 0 results found.")
+                # Verify it is a valid LinkedIn profile and not a duplicate
+                if not profile_url or "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                     
-                for result in results:
-                    post_url = str(result.get('href', '')).strip()
-                    if "linkedin.com" not in post_url.lower() or post_url.lower() in existing_urls:
-                        continue
-                        
-                    title = str(result.get('title', 'LinkedIn Builder'))
-                    name = title.split(' | ')[0].split(' on LinkedIn')[0].strip()
-                    clean_text = str(result.get('body', '')).replace('\n', ' ')[:500]
-                    
-                    new_leads.append(["DuckDuckGo", "LinkedIn", name, post_url, post_url, query, clean_text, today_str, 8])
-                    existing_urls.add(post_url.lower())
-                    st.text(f"    ↳ ✅ Sniped Profile: {name}")
-                    
-                time.sleep(2)
-    except Exception as e:
-        st.warning(f"⚠️ DuckDuckGo Blocked: {str(e)}")
-
-    # --- ENGINE 2: GOOGLE (Deeper, highly accurate) ---
-    st.write("🌐 **Booting Engine 2: Google Native...**")
-    try:
-        for query in GOOGLE_QUERIES:
-            st.text(f"↳ Scanning: {query}")
-            # sleep_interval protects Streamlit's IP from instant bans
-            for result in search(query, num_results=3, sleep_interval=4, advanced=True):
-                post_url = getattr(result, 'url', '').strip()
+                # Google indexes LinkedIn titles as "First Last - Job Title - Company | LinkedIn"
+                raw_title = getattr(result, 'title', 'LinkedIn Lead')
+                name = raw_title.split('-')[0].split('|')[0].strip()
                 
-                if not post_url or "linkedin.com" not in post_url.lower() or post_url.lower() in existing_urls:
-                    continue
-                    
-                title = getattr(result, 'title', 'LinkedIn Builder')
-                name = title.split(' on LinkedIn')[0].split('|')[0].strip()
-                clean_text = str(getattr(result, 'description', '')).replace('\n', ' ')[:500]
+                # Extract their bio/headline snippet
+                raw_desc = getattr(result, 'description', '')
+                clean_bio = str(raw_desc).replace('\n', ' ')[:300]
                 
-                new_leads.append(["Google Engine", "LinkedIn", name, post_url, post_url, query, clean_text, today_str, 8])
-                existing_urls.add(post_url.lower())
-                st.text(f"    ↳ ✅ Sniped Profile: {name}")
+                new_leads.append([
+                    "Google Profile Engine", 
+                    "LinkedIn", 
+                    name, 
+                    profile_url, 
+                    profile_url,  # Duplicated for Post URL column consistency
+                    query, 
+                    clean_bio, 
+                    today_str, 
+                    9             # High intent score for matching framework stacks
+                ])
+                existing_urls.add(profile_url.lower())
+                st.text(f"    ↳ ✅ Sniped Builder: {name}")
                 
-    except Exception as e:
-        if "429" in str(e):
-            st.warning("⚠️ Google Blocked: Streamlit Cloud IP is currently rate-limited (HTTP 429).")
-        else:
-            st.warning(f"⚠️ Google Engine Error: {str(e)}")
+        except Exception as e:
+            if "429" in str(e):
+                st.warning("⚠️ Google Rate Limit Hit. Pausing engine to protect IP.")
+                break # Stop scanning gracefully to prevent a strict server ban
+            else:
+                st.warning(f"⚠️ Search Error: {str(e)}")
 
     # --- FINAL PUSH ---
     if new_leads:
@@ -113,5 +93,4 @@ def run_linkedin_scraper():
         return len(new_leads)
         
     st.error("🛑 Scan Complete. 0 new leads found.")
-    st.info("💡 If you see yellow warning boxes above, the cloud servers are temporarily blocking the Streamlit IP address. Wait an hour and try again.")
     return 0
