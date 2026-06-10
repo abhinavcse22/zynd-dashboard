@@ -90,59 +90,72 @@ def setup_stealth_browser():
     
     return driver
 
-def try_browser_send(driver, handle, message):
+def try_browser_send(driver, handle, message, status_container):
     try:
-        driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
-        time.sleep(random.uniform(6.5, 9.2)) 
+        # 1. Human Emulation: Navigate to the Profile Page first
+        driver.get(f"https://x.com/{handle}")
+        time.sleep(random.uniform(6.0, 9.0)) # Wait for profile to render
         
-        # Destroy Modals
-        try:
-            driver.execute_script("""
-                document.querySelectorAll('[role="dialog"]').forEach(e => e.remove());
-                document.querySelectorAll('div[style*="background-color: rgba(0"]').forEach(e => e.remove());
-            """)
-            time.sleep(1)
-        except:
-            pass
+        if status_container: status_container.info(f"Scanning @{handle}'s profile for DM button...")
 
-        # Find the DM input box
-        selectors = ['div[data-testid="dmComposerTextInput"]', 'textarea[data-testid="dm-composer-textarea"]']
+        # 2. Look for the Send DM Button on the profile
+        try:
+            dm_btn = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="sendDMFromProfile"]'))
+            )
+            driver.execute_script("arguments[0].click();", dm_btn)
+        except:
+            raise Exception("No DM button found on profile. DMs are likely closed for this user.")
+
+        time.sleep(random.uniform(2.0, 4.0))
+
+        # 3. Destroy Annoying Tooltips/Popups that block the chat box
+        try:
+            close_buttons = driver.find_elements(By.CSS_SELECTOR, 'div[role="dialog"] div[aria-label="Close"]')
+            for btn in close_buttons: driver.execute_script("arguments[0].click();", btn)
+        except: pass
+
+        # 4. Wait for the exact textarea your local script used
         message_box = None
-        for selector in selectors:
-            try:
-                message_box = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-                if message_box: break
-            except: pass
+        try:
+            message_box = WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'textarea[data-testid="dm-composer-textarea"]'))
+            )
+            # Ensure it is actually interactable
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'textarea[data-testid="dm-composer-textarea"]'))
+            )
+        except:
+            raise Exception("Clicked DM button, but the chat modal failed to render.")
         
-        if not message_box:
-            raise Exception("Message input box not found. We might be on the wrong page.")
-        
-        # Emulate human typing
+        # 5. Emulate human typing
+        if status_container: status_container.info(f"Typing payload to @{handle}...")
         for char in message:
             message_box.send_keys(char)
             time.sleep(random.uniform(0.01, 0.05))
             
         time.sleep(random.uniform(1.0, 2.0))
         
-        # Click Send or hit Enter
-        try:
-            send_button = WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
-            )
-            driver.execute_script("arguments[0].click();", send_button)
-        except:
-            message_box.send_keys(Keys.RETURN)
+        # 6. Execute Send via RETURN key (proven by your local script)
+        message_box.send_keys(Keys.RETURN)
             
         time.sleep(random.uniform(3.0, 4.5))
         return True
         
     except Exception as e:
-        # DIAGNOSTIC CAPTURE
+        # VISUAL DIAGNOSTIC CAPTURE
+        try:
+            driver.save_screenshot("cloud_browser_debug.png")
+            if status_container:
+                status_container.image("cloud_browser_debug.png", caption=f"What the Cloud Browser sees for @{handle}")
+        except:
+            pass
+            
         current_url = driver.current_url
         page_source_snippet = driver.page_source[:500] if driver.page_source else "No source available"
         error_trace = traceback.format_exc()
         
-        diagnostic_msg = f"**Current URL:** {current_url}\n\n**HTML Snippet:**\n```html\n{page_source_snippet}\n```\n\n**Traceback:**\n```python\n{error_trace}\n```"
+        diagnostic_msg = f"**Current URL:** {current_url}\n\n**Error:** {str(e)}"
         raise Exception(diagnostic_msg)
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
