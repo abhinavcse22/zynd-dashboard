@@ -24,6 +24,7 @@ groq
 
 # --- Local Automation (Mac Worker Fallback) ---
 selenium==4.18.1
+selenium-stealth
 webdriver-manager==4.0.1
 
 # --- Distribution & Logging Infrastructure ---

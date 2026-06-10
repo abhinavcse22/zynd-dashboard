@@ -52,13 +52,14 @@ def generate_twitter_dm(prospect_name, bio, status_container):
         if status_container: status_container.error(f"AI Generation Error: {e}")
     return None
 
+from selenium_stealth import stealth
+
 def setup_stealth_browser():
     options = Options()
     options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--window-size=1920,1080')
-    options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
@@ -76,7 +77,18 @@ def setup_stealth_browser():
         service = Service(ChromeDriverManager().install())
         
     driver = webdriver.Chrome(service=service, options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    
+    # 🚨 THE STEALTH INJECTION 🚨
+    # This overwrites the headless fingerprint to mimic a real Mac/Windows user
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="MacIntel",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
+    
     return driver
 
 from selenium.webdriver.common.keys import Keys
