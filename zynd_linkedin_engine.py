@@ -9,17 +9,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 Bing-Optimized Profile Dorks
-BING_DORKS = [
+# 🔥 Yahoo uses Bing's index, but its firewall allows Cloud Datacenter IPs
+YAHOO_DORKS = [
     'site:linkedin.com/in/ "LangGraph"',
     'site:linkedin.com/in/ "CrewAI"',
     'site:linkedin.com/in/ "n8n" "workflow"',
     'site:linkedin.com/in/ "built an AI agent"'
 ]
 
-# Stealth headers to mimic a real Mac user on Chrome
+# Standard desktop headers to bypass basic checks
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
 }
@@ -48,51 +48,62 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Database Secure. Booting Bing Stealth Sniper...")
+    st.success("✅ Database Secure. Booting Yahoo Proxy Sniper...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # --- BING NATIVE ENGINE ---
-    for query in BING_DORKS:
-        st.text(f"↳ Scanning Bing Index: {query}")
+    # --- YAHOO NATIVE ENGINE ---
+    for query in YAHOO_DORKS:
+        st.text(f"↳ Scanning Yahoo Index: {query}")
         try:
-            url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
-            response = requests.get(url, headers=HEADERS, timeout=10)
+            # Route the request through Yahoo to bypass the Bing/Google CAPTCHA walls
+            url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
+            response = requests.get(url, headers=HEADERS, timeout=15)
             
             if response.status_code != 200:
-                st.warning(f"    ↳ Bing returned status code {response.status_code}")
+                st.warning(f"    ↳ Yahoo returned status code {response.status_code}")
                 continue
                 
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # Extract every single link from the search results
             links_found = False
             for a_tag in soup.find_all('a'):
                 href = str(a_tag.get('href', '')).strip()
                 
-                # Check if the link goes to a LinkedIn profile
-                if "linkedin.com/in/" not in href.lower() or href.lower() in existing_urls:
+                # Verify it contains a LinkedIn profile route
+                if "linkedin.com/in/" not in href.lower():
+                    continue
+                    
+                # 🪄 YAHOO DECODER RING: Yahoo wraps URLs in tracking codes (e.g., RU=https://linkedin...)
+                if "RU=" in href:
+                    try:
+                        href = href.split("RU=")[1].split("/RK=")[0]
+                        href = urllib.parse.unquote(href)
+                    except Exception:
+                        pass # Fallback to raw string if splitting fails
+                
+                # Final deduplication check after unwrapping the URL
+                if href.lower() in existing_urls:
                     continue
                     
                 links_found = True
                 
-                # Extract the Name from the raw URL slug natively
+                # Extract the Name from the clean URL slug
                 try:
                     url_path = href.lower().split("/in/")[1].split("/")[0]
-                    # Strip out ID numbers to leave just the name
                     raw_name = "".join([i for i in url_path if not i.isdigit()])
                     name = raw_name.replace("-", " ").strip().title()
                 except Exception:
                     name = "LinkedIn Builder"
                 
                 new_leads.append([
-                    "Bing Native Engine", 
+                    "Yahoo Proxy Engine", 
                     "LinkedIn", 
                     name, 
                     href, 
                     href, 
                     query, 
-                    "Builder captured via Bing native profile extraction.", 
+                    "Builder captured via Yahoo OSINT proxy bypass.", 
                     today_str, 
                     9
                 ])
@@ -100,9 +111,9 @@ def run_linkedin_scraper():
                 st.text(f"    ↳ ✅ Sniped Profile: {name}")
                 
             if not links_found:
-                st.text("    ↳ ⚠️ Bing returned 0 profiles for this query.")
+                st.text("    ↳ ⚠️ Yahoo returned 0 profiles for this query.")
                 
-            # Rest for 4 seconds between searches to mimic human pacing
+            # Rest for 4 seconds between searches to prevent Yahoo from catching on
             time.sleep(4.0)
                 
         except Exception as e:
