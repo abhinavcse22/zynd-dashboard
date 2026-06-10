@@ -1,32 +1,31 @@
 import time
-import requests
-from bs4 import BeautifulSoup
-import urllib.parse
 from datetime import datetime
+import requests
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 Yahoo uses Bing's index, but its firewall allows Cloud Datacenter IPs
-YAHOO_DORKS = [
-    'site:linkedin.com/in/ "LangGraph"',
-    'site:linkedin.com/in/ "CrewAI"',
-    'site:linkedin.com/in/ "n8n" "workflow"',
-    'site:linkedin.com/in/ "built an AI agent"'
+# 🔥 High-intent profile dorks (Google handles these perfectly via Serper)
+SERPER_DORKS = [
+    'site:linkedin.com/in/ "LangGraph" (engineer OR builder OR developer)',
+    'site:linkedin.com/in/ "CrewAI" (founder OR developer OR engineer)',
+    'site:linkedin.com/in/ "n8n" "AI agent"',
+    'site:linkedin.com/in/ "building an AI agent"'
 ]
 
-# Standard desktop headers to bypass basic checks
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-}
-
 def run_linkedin_scraper():
-    st.info("🔌 Authenticating Database Connection...")
+    st.info("🔌 Authenticating Database & API Connections...")
     
+    # 1. Verify Serper API Key
+    try:
+        serper_key = st.secrets["serper"]["api_key"]
+    except KeyError:
+        st.error("🔑 Serper API Key Missing! Go to Streamlit Secrets and add [serper] api_key.")
+        return 0
+
+    # 2. Authenticate Google Sheets
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -48,73 +47,68 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Database Secure. Booting Yahoo Proxy Sniper...")
+    st.success("✅ Secure. Booting Serper.dev Residential Proxy Engine...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # --- YAHOO NATIVE ENGINE ---
-    for query in YAHOO_DORKS:
-        st.text(f"↳ Scanning Yahoo Index: {query}")
+    # --- SERPER GOOGLE API ENGINE ---
+    for query in SERPER_DORKS:
+        st.text(f"↳ Routing via Residential Proxy: {query}")
         try:
-            # Route the request through Yahoo to bypass the Bing/Google CAPTCHA walls
-            url = f"https://search.yahoo.com/search?p={urllib.parse.quote(query)}"
-            response = requests.get(url, headers=HEADERS, timeout=15)
+            url = "https://google.serper.dev/search"
+            payload = {
+                "q": query,
+                "num": 10 # Get 10 results per query
+            }
+            headers = {
+                'X-API-KEY': serper_key,
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.post(url, headers=headers, json=payload, timeout=15)
             
             if response.status_code != 200:
-                st.warning(f"    ↳ Yahoo returned status code {response.status_code}")
+                st.warning(f"    ↳ API Error: {response.text}")
                 continue
                 
-            soup = BeautifulSoup(response.text, 'html.parser')
+            data = response.json()
+            organic_results = data.get("organic", [])
             
-            links_found = False
-            for a_tag in soup.find_all('a'):
-                href = str(a_tag.get('href', '')).strip()
+            if not organic_results:
+                st.text("    ↳ ⚠️ 0 profiles found for this exact query.")
+                continue
+
+            for result in organic_results:
+                profile_url = result.get("link", "").strip()
                 
-                # Verify it contains a LinkedIn profile route
-                if "linkedin.com/in/" not in href.lower():
+                # Verify it's a LinkedIn profile
+                if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
-                    
-                # 🪄 YAHOO DECODER RING: Yahoo wraps URLs in tracking codes (e.g., RU=https://linkedin...)
-                if "RU=" in href:
-                    try:
-                        href = href.split("RU=")[1].split("/RK=")[0]
-                        href = urllib.parse.unquote(href)
-                    except Exception:
-                        pass # Fallback to raw string if splitting fails
                 
-                # Final deduplication check after unwrapping the URL
-                if href.lower() in existing_urls:
-                    continue
-                    
-                links_found = True
+                # Clean the Name from the Google Title
+                raw_title = result.get("title", "LinkedIn Builder")
+                name = raw_title.split('-')[0].split('|')[0].strip()
                 
-                # Extract the Name from the clean URL slug
-                try:
-                    url_path = href.lower().split("/in/")[1].split("/")[0]
-                    raw_name = "".join([i for i in url_path if not i.isdigit()])
-                    name = raw_name.replace("-", " ").strip().title()
-                except Exception:
-                    name = "LinkedIn Builder"
+                # Get the Bio snippet
+                snippet = result.get("snippet", "")
+                clean_bio = str(snippet).replace('\n', ' ')[:300]
                 
                 new_leads.append([
-                    "Yahoo Proxy Engine", 
+                    "Serper Google API", 
                     "LinkedIn", 
                     name, 
-                    href, 
-                    href, 
+                    profile_url, 
+                    profile_url, 
                     query, 
-                    "Builder captured via Yahoo OSINT proxy bypass.", 
+                    clean_bio, 
                     today_str, 
                     9
                 ])
-                existing_urls.add(href.lower())
+                existing_urls.add(profile_url.lower())
                 st.text(f"    ↳ ✅ Sniped Profile: {name}")
                 
-            if not links_found:
-                st.text("    ↳ ⚠️ Yahoo returned 0 profiles for this query.")
-                
-            # Rest for 4 seconds between searches to prevent Yahoo from catching on
-            time.sleep(4.0)
+            # Quick pause to be safe, though Serper handles rate limits well
+            time.sleep(1.0)
                 
         except Exception as e:
             st.warning(f"⚠️ Search Error: {str(e)}")
