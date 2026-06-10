@@ -16,6 +16,7 @@ import zynd_stargazer_engine
 import zynd_twitter_sniper
 import zynd_auto_pr 
 import zynd_github_sniper
+import zynd_linkedin_engine
 
 # --- SETTINGS & THEME ---
 st.set_page_config(page_title="Zynd | GTM Command Center", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
@@ -677,6 +678,23 @@ elif menu == "⚙️ Control Room":
                                 st.cache_data.clear()
                             else: st.info("Scan complete. No new unique signals caught.")
                         except Exception as e: st.error(f"Engine Error: {str(e)}")
+
+        # Existing row2 layout adjustments or neat layout tracking
+        st.markdown("### 💼 Corporate Network Intelligence")
+        with st.container(border=True):
+            st.subheader("💼 LinkedIn Autopilot")
+            st.write("Harvest active framework builders, cohort applications, and MCP engineers using stealth index lookups.")
+            if st.button("Start LinkedIn Engine", use_container_width=True, key="btn_li_auto"):
+                with st.spinner("Executing non-invasive LinkedIn indexing..."):
+                    try:
+                        new_count = zynd_linkedin_engine.run_linkedin_scraper()
+                        if new_count and new_count > 0:
+                            st.success(f"LinkedIn Matrix Updated! Gathered {new_count} new leads directly to your database.")
+                            st.cache_data.clear()
+                        else:
+                            st.info("Scan concluded safely. No newly emerged unique signals caught in this window.")
+                    except Exception as e:
+                        st.error(f"Engine Warning: {str(e)}")
 
         st.markdown("### 🌐 Structural Aggregators & Workarounds")
         with st.container(border=True):
