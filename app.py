@@ -65,20 +65,26 @@ if not check_password():
 def trigger_local_worker(tunnel_url, auth_token, ct0, max_dms):
     """Sends the execution payload to your local Mac."""
     try:
+        # Use the /dispatch endpoint
         endpoint = f"{tunnel_url.rstrip('/')}/dispatch"
+        
+        # This matches the DispatchPayload class in mac_worker.py
         payload = {
             "max_dms": max_dms,
-            "sheet_tab": "Twitter Leads",
+            "sheet_tab": "Twitter Leads", # Make sure this matches your sheet
             "auth_token": auth_token,
             "ct0": ct0
         }
+        
         response = requests.post(endpoint, json=payload, timeout=10)
+        
         if response.status_code == 200:
-            st.success("✅ Trigger sent to local worker! Check your terminal.")
+            st.success("✅ Trigger sent! Check your local terminal.")
         else:
-            st.error(f"❌ Trigger failed: {response.text}")
+            st.error(f"❌ Trigger failed (Status {response.status_code}): {response.text}")
+            
     except Exception as e:
-        st.error(f"❌ Tunnel unreachable. Check your SSH command. Error: {str(e)}")
+        st.error(f"❌ Tunnel unreachable. Ensure your Mac is running. Error: {str(e)}")
 
 # ==========================================
 # 🚀 CORE APPLICATION & CUSTOM UI
@@ -891,22 +897,24 @@ elif menu == "⚙️ Control Room":
             # 🐦 CLOUD TWITTER DM ENGINE
             # ==========================================
             with st.container(border=True):
-             st.subheader("🐦 Cloud-to-Local Twitter DM Bridge")
-             st.write("Trigger your local execution node via secure tunnel.")
+               st.subheader("🐦 Cloud-to-Local Twitter DM Bridge")
     
-             col_t1, col_t2 = st.columns(2)
-             with col_t1:
-                 tunnel_url = st.text_input("Local Tunnel URL (lhr.life)", key="tunnel_url")
-                 max_dms = st.slider("Max DMs to send", 1, 20, 5, key="dm_slider")
-             with col_t2:
-                 ui_auth = st.text_input("Auth Token", type="password", key="ui_auth")
-                 ui_ct0 = st.text_input("CT0", type="password", key="ui_ct0")
+               col_t1, col_t2 = st.columns(2)
+               with col_t1:
+                    tunnel_url = st.text_input("Local Tunnel URL (lhr.life)", key="tunnel_url")
+                    max_dms = st.slider("Max DMs to send", 1, 20, 5, key="dm_slider")
+               with col_t2:
+                    ui_auth = st.text_input("Auth Token", type="password", key="ui_auth")
+                    ui_ct0 = st.text_input("CT0", type="password", key="ui_ct0")
 
-             if st.button("🚀 Trigger Local DM Campaign"):
-                 if not tunnel_url:
-                     st.error("Please enter the Tunnel URL from your terminal.")
-                 else:
-                     trigger_local_worker(tunnel_url, ui_auth, ui_ct0, max_dms)
+               if st.button("🚀 Trigger Local DM Campaign"):
+                    if not tunnel_url:
+                      st.error("Please enter the Tunnel URL from your terminal.")
+                    elif not ui_auth or not ui_ct0:
+                      st.error("Please enter both Auth Token and CT0.")
+                    else:
+            # Pass the values collected in the UI to the function
+                      trigger_local_worker(tunnel_url, ui_auth, ui_ct0, max_dms)
                                         
         with ai_col2:
             with st.container(border=True):
