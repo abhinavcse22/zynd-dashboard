@@ -1,19 +1,28 @@
 import time
+import requests
+from bs4 import BeautifulSoup
+import urllib.parse
 from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from googlesearch import search
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 Simplified queries to prevent Google from hiding results
-GOOGLE_DORKS = [
-    'site:linkedin.com/in/ LangGraph',
-    'site:linkedin.com/in/ CrewAI',
-    'site:linkedin.com/in/ n8n workflow',
-    'site:linkedin.com/in/ "AI agent" developer'
+# 🔥 Bing-Optimized Profile Dorks
+BING_DORKS = [
+    'site:linkedin.com/in/ "LangGraph"',
+    'site:linkedin.com/in/ "CrewAI"',
+    'site:linkedin.com/in/ "n8n" "workflow"',
+    'site:linkedin.com/in/ "built an AI agent"'
 ]
+
+# Stealth headers to mimic a real Mac user on Chrome
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
 
 def run_linkedin_scraper():
     st.info("🔌 Authenticating Database Connection...")
@@ -39,60 +48,65 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Database Secure. Booting Raw URL Sniper...")
+    st.success("✅ Database Secure. Booting Bing Stealth Sniper...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # --- RAW URL EXTRACTION ENGINE ---
-    for query in GOOGLE_DORKS:
-        st.text(f"↳ Deep Scanning Index: {query}")
+    # --- BING NATIVE ENGINE ---
+    for query in BING_DORKS:
+        st.text(f"↳ Scanning Bing Index: {query}")
         try:
-            # 🛑 CRITICAL FIX: advanced=True is REMOVED. 
-            # We now only ask for raw string URLs, which Google cannot break.
-            results_found = False
+            url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}"
+            response = requests.get(url, headers=HEADERS, timeout=10)
             
-            for url in search(query, num_results=10, sleep_interval=2):
-                results_found = True
+            if response.status_code != 200:
+                st.warning(f"    ↳ Bing returned status code {response.status_code}")
+                continue
                 
-                # Ensure it's a string
-                profile_url = str(url).strip()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract every single link from the search results
+            links_found = False
+            for a_tag in soup.find_all('a'):
+                href = str(a_tag.get('href', '')).strip()
                 
-                if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
+                # Check if the link goes to a LinkedIn profile
+                if "linkedin.com/in/" not in href.lower() or href.lower() in existing_urls:
                     continue
                     
-                # 🪄 MAGIC NAME EXTRACTOR
-                # Takes "https://linkedin.com/in/john-doe-12345/" and extracts "John Doe"
+                links_found = True
+                
+                # Extract the Name from the raw URL slug natively
                 try:
-                    url_path = profile_url.lower().split("/in/")[1].split("/")[0]
-                    # Strip out numbers and ID tags
+                    url_path = href.lower().split("/in/")[1].split("/")[0]
+                    # Strip out ID numbers to leave just the name
                     raw_name = "".join([i for i in url_path if not i.isdigit()])
                     name = raw_name.replace("-", " ").strip().title()
                 except Exception:
                     name = "LinkedIn Builder"
                 
                 new_leads.append([
-                    "Google Raw URL Engine", 
+                    "Bing Native Engine", 
                     "LinkedIn", 
                     name, 
-                    profile_url, 
-                    profile_url, 
+                    href, 
+                    href, 
                     query, 
-                    "High-intent framework builder extracted via raw index routing.", 
+                    "Builder captured via Bing native profile extraction.", 
                     today_str, 
                     9
                 ])
-                existing_urls.add(profile_url.lower())
-                st.text(f"    ↳ ✅ Sniped Builder: {name}")
+                existing_urls.add(href.lower())
+                st.text(f"    ↳ ✅ Sniped Profile: {name}")
                 
-            if not results_found:
-                st.text("    ↳ ⚠️ Google returned 0 URLs for this query.")
+            if not links_found:
+                st.text("    ↳ ⚠️ Bing returned 0 profiles for this query.")
+                
+            # Rest for 4 seconds between searches to mimic human pacing
+            time.sleep(4.0)
                 
         except Exception as e:
-            if "429" in str(e):
-                st.warning("⚠️ Google Rate Limit Hit. Pausing engine to protect IP.")
-                break 
-            else:
-                st.warning(f"⚠️ Search Error: {str(e)}")
+            st.warning(f"⚠️ Search Error: {str(e)}")
 
     # --- FINAL PUSH ---
     if new_leads:
