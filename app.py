@@ -868,6 +868,42 @@ elif menu == "⚙️ Control Room":
                                 user_smtp_host, user_smtp_port, user_smtp_user, user_smtp_pass, 
                                 email_mode, custom_subj, custom_msg, email_cap, progress_bar, status_text
                             )
+
+            # ==========================================
+            # 🐦 CLOUD TWITTER DM ENGINE
+            # ==========================================
+            with st.container(border=True):
+                st.subheader("🐦 Cloud Twitter DM Autopilot")
+                st.write("Fires highly targeted, lowercase technical DMs via Twikit API directly from the cloud.")
+                
+                with st.expander("🔑 Verify Twitter Cookies"):
+                    tw_auth = st.text_input("auth_token", value=st.secrets.get("twitter", {}).get("auth_token", ""), type="password")
+                    tw_ct0 = st.text_input("ct0", value=st.secrets.get("twitter", {}).get("ct0", ""), type="password")
+                
+                tw_mode = st.radio("Twitter Generation Mode", ["🧠 Elite AI (Lowercase/Casual)", "✍️ Custom Template"], horizontal=True, key="tw_radio")
+                
+                tw_custom_msg = ""
+                if tw_mode == "✍️ Custom Template":
+                    st.info("Variables you can use: `{name}`, `{bio}`")
+                    tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space...", height=100)
+                
+                max_dms_input = st.slider("Max DMs to send this batch", 1, 20, 5, key="twitter_cap")
+
+                if st.button("📡 Execute Cloud DM Campaign", type="primary", use_container_width=True):
+                    if not tw_auth or not tw_ct0:
+                        st.error("Missing Twitter cookies. Check your secrets.")
+                    else:
+                        with st.spinner("Executing Cloud DM Campaign..."):
+                            import zynd_twitter_dm
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+                            count, msg = zynd_twitter_dm.dispatch_twitter_dms(
+                                max_dms=max_dms_input,
+                                mode=tw_mode,
+                                custom_msg=tw_custom_msg,
+                                status_container=status_text
+                            )
+                            status_text.success(msg)
                                         
         with ai_col2:
             with st.container(border=True):
