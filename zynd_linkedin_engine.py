@@ -7,13 +7,12 @@ from googlesearch import search
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 The Fix: Target Public Profiles (/in/) instead of Posts.
-# Google indexes Profiles perfectly, but hides Posts from search engines.
+# 🔥 Simplified queries to prevent Google from hiding results
 GOOGLE_DORKS = [
-    'site:linkedin.com/in/ "LangGraph" (engineer OR builder OR developer)',
-    'site:linkedin.com/in/ "CrewAI" (founder OR developer OR engineer)',
-    'site:linkedin.com/in/ "n8n" "AI agent"',
-    'site:linkedin.com/in/ "building an AI agent"'
+    'site:linkedin.com/in/ LangGraph',
+    'site:linkedin.com/in/ CrewAI',
+    'site:linkedin.com/in/ n8n workflow',
+    'site:linkedin.com/in/ "AI agent" developer'
 ]
 
 def run_linkedin_scraper():
@@ -30,7 +29,6 @@ def run_linkedin_scraper():
             sheet = client.open_by_key(SHEET_ID).add_worksheet(title="LinkedIn Leads", rows="1000", cols="9")
             sheet.append_row(["Source", "Platform", "Username/Name", "Profile URL", "Post URL", "Query Used", "Snippet", "Date Found", "Lead Score"])
         
-        # Extract existing URLs to prevent duplicates
         raw_data = sheet.get_all_values()
         existing_urls = set()
         if len(raw_data) > 0 and 'Profile URL' in raw_data[0]:
@@ -41,48 +39,58 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Database Secure. Booting Google Profile Sniper...")
+    st.success("✅ Database Secure. Booting Raw URL Sniper...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # --- GOOGLE NATIVE ENGINE ---
+    # --- RAW URL EXTRACTION ENGINE ---
     for query in GOOGLE_DORKS:
         st.text(f"↳ Deep Scanning Index: {query}")
         try:
-            # advanced=True gets us the titles (names) and descriptions (bios)
-            for result in search(query, num_results=6, sleep_interval=3, advanced=True):
-                profile_url = getattr(result, 'url', '').strip()
+            # 🛑 CRITICAL FIX: advanced=True is REMOVED. 
+            # We now only ask for raw string URLs, which Google cannot break.
+            results_found = False
+            
+            for url in search(query, num_results=10, sleep_interval=2):
+                results_found = True
                 
-                # Verify it is a valid LinkedIn profile and not a duplicate
-                if not profile_url or "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
+                # Ensure it's a string
+                profile_url = str(url).strip()
+                
+                if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                     
-                # Google indexes LinkedIn titles as "First Last - Job Title - Company | LinkedIn"
-                raw_title = getattr(result, 'title', 'LinkedIn Lead')
-                name = raw_title.split('-')[0].split('|')[0].strip()
-                
-                # Extract their bio/headline snippet
-                raw_desc = getattr(result, 'description', '')
-                clean_bio = str(raw_desc).replace('\n', ' ')[:300]
+                # 🪄 MAGIC NAME EXTRACTOR
+                # Takes "https://linkedin.com/in/john-doe-12345/" and extracts "John Doe"
+                try:
+                    url_path = profile_url.lower().split("/in/")[1].split("/")[0]
+                    # Strip out numbers and ID tags
+                    raw_name = "".join([i for i in url_path if not i.isdigit()])
+                    name = raw_name.replace("-", " ").strip().title()
+                except Exception:
+                    name = "LinkedIn Builder"
                 
                 new_leads.append([
-                    "Google Profile Engine", 
+                    "Google Raw URL Engine", 
                     "LinkedIn", 
                     name, 
                     profile_url, 
-                    profile_url,  # Duplicated for Post URL column consistency
+                    profile_url, 
                     query, 
-                    clean_bio, 
+                    "High-intent framework builder extracted via raw index routing.", 
                     today_str, 
-                    9             # High intent score for matching framework stacks
+                    9
                 ])
                 existing_urls.add(profile_url.lower())
                 st.text(f"    ↳ ✅ Sniped Builder: {name}")
                 
+            if not results_found:
+                st.text("    ↳ ⚠️ Google returned 0 URLs for this query.")
+                
         except Exception as e:
             if "429" in str(e):
                 st.warning("⚠️ Google Rate Limit Hit. Pausing engine to protect IP.")
-                break # Stop scanning gracefully to prevent a strict server ban
+                break 
             else:
                 st.warning(f"⚠️ Search Error: {str(e)}")
 
