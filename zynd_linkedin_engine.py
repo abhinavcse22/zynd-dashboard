@@ -3,30 +3,32 @@ from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from duckduckgo_search import DDGS
-import re
-import random
+import requests
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🎯 The Phrase Hack: Drop 'site:' completely so DuckDuckGo stops blocking the results
-LINKEDIN_QUERIES = [
-    '"linkedin.com/posts" "AI agent" builder',
-    '"linkedin.com/posts" "LangGraph" error',
-    '"linkedin.com/posts" "CrewAI" framework',
-    '"linkedin.com/posts" "n8n" workflow automation'
+# High-intent keyword arrays mapped cleanly to the Zynd 14-Day Cohort target personas
+KEYWORDS = [
+    "LangGraph stuck",
+    "CrewAI framework",
+    "n8n AI workflow",
+    "built an AI agent"
 ]
 
 def run_linkedin_scraper():
+    # 1. Secure Credential Check: Pulls cleanly from Streamlit cloud secrets block
+    try:
+        apify_token = st.secrets["apify"]["api_token"]
+    except KeyError:
+        raise Exception("🔑 Apify API Token missing! Please add your token into the Streamlit Cloud Secrets management panel under ['apify']['api_token'].")
+
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
     
-    # 🛡️ Safe Tab Auto-Initialization
     try:
         sheet = client.open_by_key(SHEET_ID).worksheet("LinkedIn Leads")
     except gspread.exceptions.WorksheetNotFound:
-        # If tab is missing, create it instantly without throwing an error
         sheet = client.open_by_key(SHEET_ID).add_worksheet(title="LinkedIn Leads", rows="1000", cols="9")
         sheet.append_row(["Source", "Platform", "Username/Name", "Profile URL", "Post URL", "Query Used", "Snippet", "Date Found", "Lead Score"])
     
@@ -40,56 +42,56 @@ def run_linkedin_scraper():
             pass 
 
     new_leads = []
-    shuffled_queries = LINKEDIN_QUERIES.copy()
-    random.shuffle(shuffled_queries)
+    today_str = datetime.now().strftime('%Y-%m-%d')
 
-    for query in shuffled_queries:
+    # 2. Iterate through core intent signals via targeted API payloads
+    for keyword in KEYWORDS:
+        actor_id = "harvestapi/linkedin-post-search"
+        # Using run-sync-get-dataset-items allows pulling structured JSON inside a single request window
+        api_url = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items?token={apify_token}"
+        
+        payload = {
+            "searchQueries": [keyword],
+            "count": 5,
+            "lookbackDays": 2
+        }
+        
         try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=15))
-                
-                if not results:
-                    continue
-                    
-                for result in results:
-                    post_url = str(result.get('href', '')).strip()
-                    post_url_lower = post_url.lower()
-                    
-                    if post_url_lower in existing_urls:
-                        continue
-                    
-                    if "linkedin.com" not in post_url_lower:
-                        continue
+            # Set a 45s threshold to prevent Streamlit worker timeouts
+            response = requests.post(api_url, json=payload, timeout=45)
+            
+            if response.status_code in [200, 201]:
+                items = response.json()
+                if isinstance(items, list):
+                    for item in items:
+                        post_url = item.get("postUrl") or item.get("url") or ""
+                        post_url_clean = str(post_url).strip()
                         
-                    # Extract title/name markers cleanly from the result body
-                    title = str(result.get('title', 'LinkedIn Builder'))
-                    name = title.split('|')[0].split('-')[0].strip()
-                    
-                    # Dynamically prioritize pain signals (errors, frustrations) for higher scoring
-                    score = 9 if any(kw in query.lower() for kw in ['error', 'stuck', 'issue']) else 7
-                    date_str = datetime.now().strftime('%Y-%m-%d')
-                    clean_text = str(result.get('body', '')).replace('\n', ' ')[:500]
-                    
-                    new_leads.append([
-                        "Ghost Search", 
-                        "LinkedIn", 
-                        name, 
-                        post_url, # Fallback to post path if specific personal profile link is missing
-                        post_url, 
-                        query, 
-                        clean_text, 
-                        date_str, 
-                        score
-                    ])
-                    existing_urls.add(post_url_lower)
-            
-            # Anti-throttling dynamic delay
-            time.sleep(random.uniform(4.0, 6.0)) 
-            
-        except Exception as e:
-            if "ratelimit" in str(e).lower():
-                break
-            continue
+                        if not post_url_clean or post_url_clean.lower() in existing_urls:
+                            continue
+                            
+                        author_name = item.get("authorName") or item.get("author", {}).get("name") or "LinkedIn Builder"
+                        profile_url = item.get("authorProfileUrl") or item.get("author", {}).get("url") or post_url_clean
+                        text_snippet = item.get("text") or item.get("body") or ""
+                        text_clean = str(text_snippet).replace('\n', ' ')[:500]
+                        
+                        # High-priority scaling for acute pain points
+                        score = 9 if "stuck" in keyword.lower() else 7
+                        
+                        new_leads.append([
+                            "Apify Extraction Node", 
+                            "LinkedIn", 
+                            author_name, 
+                            profile_url, 
+                            post_url_clean, 
+                            keyword, 
+                            text_clean, 
+                            today_str, 
+                            score
+                        ])
+                        existing_urls.add(post_url_clean.lower())
+        except Exception:
+            continue # Skip any timed-out query execution safely to keep the loop moving
 
     if new_leads:
         sheet.append_rows(new_leads)
