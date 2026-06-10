@@ -857,6 +857,9 @@ elif menu == "⚙️ Control Room":
                 
                 email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 50, 5, key="email_broadcast_cap")
                 
+                # ADDED: The text input for your localhost.run URL
+                email_backend_url = st.text_input("🔗 Backend API Tunnel URL", value="http://localhost:8000", key="email_tunnel_url")
+                
                 if st.button("🚀 Start Outreach Campaign"):
                     if not user_smtp_user or not user_smtp_pass:
                         st.warning("Please connect your email credentials first.")
@@ -876,13 +879,16 @@ elif menu == "⚙️ Control Room":
                             }
                             
                             try:
-                                response = requests.post("http://localhost:8000/api/start-campaign", json=payload)
+                                # FIXED: Now dynamically uses the URL you paste in the UI
+                                target_endpoint = f"{email_backend_url.rstrip('/')}/api/start-campaign"
+                                response = requests.post(target_endpoint, json=payload)
+                                
                                 if response.status_code == 200:
                                     st.success("✅ Campaign successfully queued! You can safely navigate away; emails are sending in the background.")
                                 else:
-                                    st.error("Failed to queue campaign. Ensure FastAPI backend is running.")
+                                    st.error(f"Failed to queue campaign. Server responded with: {response.status_code}")
                             except Exception as e:
-                                st.error(f"Could not reach execution server: {e}. Run 'uvicorn backend_server:app' in your terminal.")
+                                st.error(f"Could not reach execution server: {e}. Make sure your tunnel is running.")
 
             # ==========================================
             # 🚨 THE NEW C2 CLOUD TRIGGER BLOCK 🚨
