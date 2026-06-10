@@ -833,7 +833,7 @@ elif menu == "⚙️ Control Room":
                                 st.markdown(res)
 
             # ==========================================
-            # 🚨 100% CLOUD EMAIL DISPATCHER (NO MAC REQUIRED) 🚨
+            # 📧 CLOUD EMAIL DISPATCHER
             # ==========================================
             with st.container(border=True):
                 st.subheader("📡 Cloud Email Dispatcher")
@@ -846,7 +846,6 @@ elif menu == "⚙️ Control Room":
                     user_smtp_pass = st.text_input("App Password", type="password")
                 
                 email_mode = st.radio("Outreach Generation Mode", ["🧠 AI Personalized", "✍️ Custom Template"], horizontal=True)
-                
                 custom_subj = ""
                 custom_msg = ""
                 
@@ -862,120 +861,13 @@ elif menu == "⚙️ Control Room":
                         st.warning("Please connect your email credentials first.")
                     else:
                         with st.spinner("Executing Cloud Campaign... Do not close this tab until finished."):
-                            import smtplib
-                            from email.mime.text import MIMEText
-                            from email.mime.multipart import MIMEMultipart
-                            import re
-                            import requests
-                            import time
-                            import gspread
-                            from oauth2client.service_account import ServiceAccountCredentials
-                            
-                            # 1. Connect to DB
-                            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-                            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
-                            client = gspread.authorize(creds)
-                            sheet = client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet("github_stargazer_leads")
-                            
-                            records = sheet.get_all_records()
-                            headers = sheet.row_values(1)
-                            status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
-
-                            emails_fired = 0
-                            
-                            # 2. Progress UI
+                            import zynd_email_dispatcher
                             progress_bar = st.progress(0)
                             status_text = st.empty()
-
-                            for idx, row in enumerate(records):
-                                if emails_fired >= email_cap: break
-                                    
-                                prospect_email = str(row.get("public_email", "")).strip()
-                                status = str(row.get("outreach_status", "Pending")).strip()
-                                username = str(row.get("github_username", "Developer")).strip()
-                                bio = str(row.get("bio", "")).strip()
-                                signal = str(row.get("source_repo", "GitHub")).strip()
-                                
-                                if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower(): continue
-                                if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested"]: continue
-                                    
-                                status_text.write(f"Drafting highly-targeted email for {username}...")
-                                
-                                # 3. Generate Draft
-                                if email_mode == "✍️ Custom Template":
-                                    subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
-                                    body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
-                                else:
-                                    # 🧠 WORLD-CLASS B2B SAAS COLD OUTREACH PROMPT
-                                    prompt = f"""
-                                    You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
-                                    Write a highly effective, professional cold email to a developer named {username}.
-                                    They recently interacted with this GitHub repository: {signal}.
-                                    Their bio context: {bio}
-                                    
-                                    Structure the email using this exact B2B sales framework:
-                                    1. The Hook: Acknowledge their interaction with {signal}. Transition smoothly into a relevant technical challenge they might face. (e.g., "I noticed your work with X... it got me thinking how you handle Y.")
-                                    2. The Value: Introduce Zynd. State clearly how it solves that challenge or helps builders like them. (e.g., "Zynd helps developers reduce friction by...", "We recently built Zynd so agents can get discovered...")
-                                    3. The Call to Action (CTA): A low-friction ask. (e.g., "Open to a 15-min chat next week?" or "Want to see a quick demo?")
-                                    
-                                    STRICT RULES:
-                                    - Sound like an elite technical founder. Professional, intelligent, but conversational.
-                                    - DO NOT use cheesy marketing words ("synergies", "revolutionary", "delve").
-                                    - Keep it under 4 short paragraphs.
-                                    - Use proper capitalization and grammar.
-                                    - Sign off as "Best,\nAbhinav". Do NOT use placeholders like [Your Name].
-                                    - Subject line should read like a quick idea or relevant connection (e.g., "Quick idea regarding [repo]" or "[Name], a faster way to...").
-
-                                    Format EXACTLY like this:
-                                    SUBJECT: [your subject line]
-                                    BODY: [your email body]
-                                    """
-                                    
-                                    api_key = st.secrets["openrouter"]["api_key"]
-                                    resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
-                                                         headers={"Authorization": f"Bearer {api_key}"}, 
-                                                         json={
-                                                             "model": "openai/gpt-4o-mini", 
-                                                             "temperature": 0.4, # Adjusted to balance creativity with strict structure
-                                                             "messages": [{"role": "user", "content": prompt}]
-                                                         })
-                                                         
-                                    ai_text = resp.json()['choices'][0]['message']['content']
-                                    
-                                    # Strip markdown formatting
-                                    ai_text = ai_text.replace("**", "")
-                                    
-                                    subj_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
-                                    body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
-                                    subject = subj_match.group(1).strip() if subj_match else f"Quick idea regarding {signal}"
-                                    body = body_match.group(1).strip() if body_match else f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
-
-                                # 4. Fire SMTP
-                                try:
-                                    msg = MIMEMultipart()
-                                    msg['From'] = user_smtp_user
-                                    msg['To'] = prospect_email
-                                    msg['Subject'] = subject
-                                    msg.attach(MIMEText(body, 'plain'))
-                                    
-                                    server = smtplib.SMTP(user_smtp_host, user_smtp_port)
-                                    server.starttls()
-                                    server.login(user_smtp_user, user_smtp_pass)
-                                    server.sendmail(user_smtp_user, prospect_email, msg.as_string())
-                                    server.quit()
-                                    
-                                    emails_fired += 1
-                                    progress_bar.progress(int((emails_fired / email_cap) * 100))
-                                    if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
-                                    
-                                    if emails_fired < email_cap:
-                                        status_text.write(f"✅ Sent to {prospect_email}. Sleeping 10s to avoid spam filters...")
-                                        time.sleep(10)
-                                        
-                                except Exception as e:
-                                    st.error(f"Failed to send to {prospect_email}: {e}")
-
-                            status_text.success(f"🏁 Campaign Complete! {emails_fired} emails sent successfully.")
+                            zynd_email_dispatcher.run_cloud_email_campaign(
+                                user_smtp_host, user_smtp_port, user_smtp_user, user_smtp_pass, 
+                                email_mode, custom_subj, custom_msg, email_cap, progress_bar, status_text
+                            )
                                         
         with ai_col2:
             with st.container(border=True):

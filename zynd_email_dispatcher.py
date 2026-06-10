@@ -1,111 +1,28 @@
-import streamlit as st
-import gspread
-import requests
 import smtplib
-import time
-import random
-import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import re
+import requests
+import time
+import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import streamlit as st
 
-# --- ENVIRONMENT PARAMETERS ---
-SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
-
-def generate_personalized_payload(prospect_name, context_signal, bio):
-    """Hits OpenRouter and uses robust Regex to extract the subject and body."""
-    OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    prompt = f"""
-    Act as Abhinav, a technical founder building Zynd. Write a cold email to a developer.
-    
-    Lead Name: {prospect_name}
-    Repo/Signal they interacted with: {context_signal}
-    Their Bio: {bio}
-    
-    Guidelines for the email:
-    1. Tone: Peer-to-peer, relaxed, engineer-to-engineer. Do NOT sound like a marketer. Use lowercase for casualness where appropriate.
-    2. Length: 3-4 short paragraphs maximum. Highly readable.
-    3. Content: 
-       - Acknowledge their specific work or interaction with {context_signal}.
-       - Briefly mention Zynd: "we're building a workspace for autonomous AI agents to get discovered and integrated."
-       - Soft call to action: "Would love to get your eyes on it" or "Any interest in taking a quick look?"
-    
-    You MUST return the output in exactly this format with no other text or markdown blocks:
-    SUBJECT: [Your Subject Line]
-    BODY: [Your Email Body]
-    """
-    
-    # Swapped to a highly reliable model string just in case the previous one was timing out
-    data = {
-        "model": "openai/gpt-4o-mini", 
-        "messages": [{"role": "user", "content": prompt}]
-    }
-    
-    try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=20)
-        
-        if response.status_code != 200:
-            return None, None, f"OpenRouter API Error {response.status_code}: {response.text}"
-            
-        ai_text = response.json()['choices'][0]['message']['content']
-        
-        # Clean up potential markdown blocks from the LLM
-        ai_text = ai_text.replace("```text", "").replace("```", "").replace("**", "").strip()
-        
-        # BULLETPROOF REGEX PARSING (Case-insensitive)
-        subject_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
-        body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
-        
-        if subject_match and body_match:
-            subject = subject_match.group(1).strip()
-            body = body_match.group(1).strip()
-            return subject, body, None
-        else:
-            return None, None, f"AI ignored formatting rules. Raw output preview: {ai_text[:100]}..."
-            
-    except Exception as e:
-        return None, None, f"API Connection Timeout/Failure: {str(e)}"
-
-def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", custom_body="", status_container=None):
-    """Scans databases, applies chosen template/AI, fires via SMTP, and logs updates safely."""
-    if "smtp" not in st.secrets:
-        return 0, "Error: [smtp] secrets block is missing."
-
+def run_cloud_email_campaign(smtp_host, smtp_port, smtp_user, smtp_pass, mode, custom_subj, custom_msg, email_cap, progress_bar, status_text):
+    # 1. Connect to DB
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
+    sheet = client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet("github_stargazer_leads")
     
-    try:
-        sheet = client.open_by_key(SHEET_ID).worksheet("github_stargazer_leads")
-        records = sheet.get_all_records()
-        
-        headers = sheet.row_values(1)
-        if "outreach_status" in headers:
-            status_col_idx = headers.index("outreach_status") + 1
-        else:
-            status_col_idx = None
-            
-    except Exception as e:
-        return 0, f"Database Connection Error: {str(e)}"
-    
-    if not records:
-        return 0, "No leads located inside the target database."
-
-    smtp_server = st.secrets["smtp"]["server"]
-    smtp_port = int(st.secrets["smtp"]["port"])
-    sender_email = st.secrets["smtp"]["email"]
-    sender_password = st.secrets["smtp"]["password"]
+    records = sheet.get_all_records()
+    headers = sheet.row_values(1)
+    status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
 
     emails_fired = 0
-    
+
     for idx, row in enumerate(records):
-        if emails_fired >= max_emails:
-            break
+        if emails_fired >= email_cap: break
             
         prospect_email = str(row.get("public_email", "")).strip()
         status = str(row.get("outreach_status", "Pending")).strip()
@@ -113,69 +30,75 @@ def dispatch_campaign(max_emails=10, mode="AI Generated", custom_subject="", cus
         bio = str(row.get("bio", "")).strip()
         signal = str(row.get("source_repo", "GitHub")).strip()
         
-        if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower():
-            continue
-        if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested", "AI Generation Failed"]:
-            continue
+        if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower(): continue
+        if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested"]: continue
             
+        status_text.write(f"Drafting highly-targeted email for {username}...")
+        
+        # 2. Generate Draft
         if mode == "✍️ Custom Template":
-            if status_container:
-                status_container.info(f"Applying custom template for {username}...")
-            subject = custom_subject.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
-            body = custom_body.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
+            subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
+            body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
         else:
-            if status_container:
-                status_container.info(f"Drafting AI payload for {username}...")
-                
-            subject, body, error_msg = generate_personalized_payload(username, signal, bio)
+            # The B2B SaaS Logic
+            prompt = f"""
+            You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
+            Write a highly effective, professional cold email to a developer named {username}.
+            They recently interacted with this GitHub repository: {signal}.
+            Their bio context: {bio}
             
-            if not subject or not body:
-                if status_container:
-                    # NOW IT TELLS YOU EXACTLY WHY IT FAILED
-                    status_container.error(f"Failed on {username} | {error_msg}")
-                    
-                if status_col_idx:
-                    try:
-                        sheet.update_cell(idx + 2, status_col_idx, "AI Generation Failed")
-                        time.sleep(2) 
-                    except Exception:
-                        pass
-                continue
-        
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = prospect_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
-        
+            Structure the email using this exact B2B sales framework:
+            1. The Hook: Acknowledge their interaction with {signal}. Transition smoothly into a relevant technical challenge they might face.
+            2. The Value: Introduce Zynd. State clearly how it solves that challenge or helps builders like them.
+            3. The Call to Action (CTA): A low-friction ask. (e.g., "Open to a 15-min chat next week?")
+            
+            STRICT RULES:
+            - Sound like an elite technical founder. Professional, intelligent, but conversational.
+            - DO NOT use cheesy marketing words ("synergies", "revolutionary", "delve").
+            - Keep it under 4 short paragraphs.
+            - Sign off as "Best,\nAbhinav". Do NOT use placeholders like [Your Name].
+            - Subject line should read like a quick idea (e.g., "Quick idea regarding [repo]" or "[Name], a faster way to...").
+
+            Format EXACTLY like this:
+            SUBJECT: [your subject line]
+            BODY: [your email body]
+            """
+            
+            api_key = st.secrets["openrouter"]["api_key"]
+            resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
+                                 headers={"Authorization": f"Bearer {api_key}"}, 
+                                 json={"model": "openai/gpt-4o-mini", "temperature": 0.4, "messages": [{"role": "user", "content": prompt}]})
+                                 
+            ai_text = resp.json()['choices'][0]['message']['content'].replace("**", "")
+            
+            subj_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
+            body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
+            subject = subj_match.group(1).strip() if subj_match else f"Quick idea regarding {signal}"
+            body = body_match.group(1).strip() if body_match else f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
+
+        # 3. Fire SMTP
         try:
-            if status_container:
-                status_container.warning(f"Connecting to SMTP server... firing email to {prospect_email}")
+            msg = MIMEMultipart()
+            msg['From'] = smtp_user
+            msg['To'] = prospect_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
             
-            server = smtplib.SMTP(smtp_server, smtp_port)
+            server = smtplib.SMTP(smtp_host, smtp_port)
             server.starttls()
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, prospect_email, msg.as_string())
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, prospect_email, msg.as_string())
             server.quit()
             
             emails_fired += 1
+            progress_bar.progress(int((emails_fired / email_cap) * 100))
+            if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
             
-            if status_col_idx:
-                sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
-                
-            try:
-                import zynd_outreach_history
-                zynd_outreach_history.log_outreach_event(username, "Abhinav", "Email", "Initial Pitch", f"Sent to: {prospect_email} | Subject: {subject}")
-            except Exception:
-                pass
-            
-            if emails_fired < max_emails:
-                delay = random.randint(120, 300) 
-                if status_container:
-                    status_container.success(f"Email sent! Human emulation active: Sleeping for {delay} seconds to bypass ISP spam filters...")
-                time.sleep(delay)
+            if emails_fired < email_cap:
+                status_text.write(f"✅ Sent to {prospect_email}. Sleeping 10s to avoid spam filters...")
+                time.sleep(10)
                 
         except Exception as e:
-            return emails_fired, f"Socket Failure on lead {username}: {str(e)}"
-            
-    return emails_fired, "Campaign cycle successfully concluded."
+            st.error(f"Failed to send to {prospect_email}: {e}")
+
+    status_text.success(f"🏁 Campaign Complete! {emails_fired} emails sent successfully.")
