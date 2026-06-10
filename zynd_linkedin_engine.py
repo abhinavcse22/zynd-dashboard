@@ -9,13 +9,12 @@ import random
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🎯 Specialized LinkedIn Search Dorks matching Zynd ICP & Cohort Targets
-# 🎯 Native DuckDuckGo Syntax: Keep site to root domain, move folder to keywords
+# 🎯 The Phrase Hack: Drop 'site:' completely so DuckDuckGo stops blocking the results
 LINKEDIN_QUERIES = [
-    'site:linkedin.com "linkedin.com/posts" "I built an AI agent" "GitHub"',
-    'site:linkedin.com "linkedin.com/posts" "LangGraph" stuck',
-    'site:linkedin.com "linkedin.com/posts" "CrewAI" agent framework',
-    'site:linkedin.com "linkedin.com/posts" "n8n" workflow automation'
+    '"linkedin.com/posts" "AI agent" builder',
+    '"linkedin.com/posts" "LangGraph" error',
+    '"linkedin.com/posts" "CrewAI" framework',
+    '"linkedin.com/posts" "n8n" workflow automation'
 ]
 
 def run_linkedin_scraper():
