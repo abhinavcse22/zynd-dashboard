@@ -832,11 +832,19 @@ elif menu == "⚙️ Control Room":
                             for res in results:
                                 st.markdown(res)
 
+            # ==========================================
+            # 🚨 THE NEW SAAS EMAIL DISPATCHER BLOCK 🚨
+            # ==========================================
             with st.container(border=True):
-                st.subheader("📡 Automated Stealth Email Dispatcher")
-                st.write("Fires personalized sequences to scripter logs containing public emails.")
+                st.subheader("📡 SaaS Email Dispatcher (Asynchronous)")
+                st.write("Fires personalized sequences in the background without freezing your dashboard.")
                 
-                # New Template UI Engine
+                with st.expander("🔑 Connect Your Email (SMTP)"):
+                    user_smtp_host = st.text_input("SMTP Host", "smtp.gmail.com")
+                    user_smtp_port = st.number_input("SMTP Port", value=587)
+                    user_smtp_user = st.text_input("Email Address")
+                    user_smtp_pass = st.text_input("App Password", type="password")
+                
                 email_mode = st.radio("Outreach Generation Mode", ["🧠 AI Personalized", "✍️ Custom Template"], horizontal=True)
                 
                 custom_subj = ""
@@ -847,27 +855,34 @@ elif menu == "⚙️ Control Room":
                     custom_subj = st.text_input("Subject Line", "Quick question about {repo}")
                     custom_msg = st.text_area("Email Body", "Hey {name},\n\nSaw you contributing to {repo}. I'm working on a platform called Zynd for AI agents...\n\nCheers,\nAbhinav", height=150)
                 
-                email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 20, 5, key="email_broadcast_cap")
-                status_placeholder = st.empty() 
+                email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 50, 5, key="email_broadcast_cap")
                 
-                if st.button("🚀 Initialize Email Outreach Matrix", type="primary", use_container_width=True):
-                    with st.spinner("Executing sequence... Do not close this tab. Stealth delays are active."):
-                        import zynd_email_dispatcher
-                        sent_count, msg = zynd_email_dispatcher.dispatch_campaign(
-                            max_emails=email_cap, 
-                            mode=email_mode,
-                            custom_subject=custom_subj,
-                            custom_body=custom_msg,
-                            status_container=status_placeholder
-                        )
-                        
-                        status_placeholder.empty() 
-                        if sent_count > 0:
-                            st.success(f"Success! Safely deployed {sent_count} tracking payloads.")
-                            st.info(msg)
-                            st.cache_data.clear()
-                        else:
-                            st.warning(msg)
+                if st.button("🚀 Start Outreach Campaign"):
+                    if not user_smtp_user or not user_smtp_pass:
+                        st.warning("Please connect your email credentials first.")
+                    else:
+                        with st.spinner("Queueing campaign..."):
+                            payload = {
+                                "user_id": "test_user_001",
+                                "target_segment": "GitHub Stargazers",
+                                "max_emails": email_cap,
+                                "smtp_host": user_smtp_host,
+                                "smtp_port": user_smtp_port,
+                                "smtp_user": user_smtp_user,
+                                "smtp_pass": user_smtp_pass,
+                                "mode": email_mode,
+                                "custom_subject": custom_subj,
+                                "custom_body": custom_msg
+                            }
+                            
+                            try:
+                                response = requests.post("http://localhost:8000/api/start-campaign", json=payload)
+                                if response.status_code == 200:
+                                    st.success("✅ Campaign successfully queued! You can safely navigate away; emails are sending in the background.")
+                                else:
+                                    st.error("Failed to queue campaign. Ensure FastAPI backend is running.")
+                            except Exception as e:
+                                st.error(f"Could not reach execution server: {e}. Run 'uvicorn backend_server:app' in your terminal.")
 
             # ==========================================
             # 🚨 THE NEW C2 CLOUD TRIGGER BLOCK 🚨
