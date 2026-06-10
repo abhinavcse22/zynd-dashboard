@@ -5,6 +5,7 @@ import time
 import random
 import re
 import shutil
+import traceback
 from oauth2client.service_account import ServiceAccountCredentials
 
 from selenium import webdriver
@@ -13,6 +14,8 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium_stealth import stealth
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -33,7 +36,7 @@ def generate_twitter_dm(prospect_name, bio, status_container):
     STRICT RULES:
     1. ALL LOWERCASE.
     2. NEVER start with an "@" symbol, a name, or a greeting.
-    3. YOU MUST MENTION "zynd" exactly as shown. 
+    3. YOU MUST MENTION "zynd". 
     4. No punctuation at the very end of the message.
     5. MAX 25 WORDS total.
     """
@@ -48,11 +51,11 @@ def generate_twitter_dm(prospect_name, bio, status_container):
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=15)
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content'].replace('"', '').strip()
+        else:
+            if status_container: status_container.error(f"OpenRouter API Error: {response.text}")
     except Exception as e:
-        if status_container: status_container.error(f"AI Generation Error: {e}")
+        if status_container: status_container.error(f"AI Generation Failed: {str(e)}")
     return None
-
-from selenium_stealth import stealth
 
 def setup_stealth_browser():
     options = Options()
@@ -64,7 +67,6 @@ def setup_stealth_browser():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
 
-    # Detect if running in Streamlit Cloud Linux Environment
     sys_chromedriver = shutil.which("chromedriver")
     sys_chromium = shutil.which("chromium") or shutil.which("chromium-browser")
     
@@ -72,14 +74,11 @@ def setup_stealth_browser():
         options.binary_location = sys_chromium
         service = Service(executable_path=sys_chromedriver)
     else:
-        # Fallback for local Mac testing
         from webdriver_manager.chrome import ChromeDriverManager
         service = Service(ChromeDriverManager().install())
         
     driver = webdriver.Chrome(service=service, options=options)
     
-    # 🚨 THE STEALTH INJECTION 🚨
-    # This overwrites the headless fingerprint to mimic a real Mac/Windows user
     stealth(driver,
         languages=["en-US", "en"],
         vendor="Google Inc.",
@@ -91,53 +90,60 @@ def setup_stealth_browser():
     
     return driver
 
-from selenium.webdriver.common.keys import Keys
-
 def try_browser_send(driver, handle, message):
-    driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
-    time.sleep(random.uniform(6.5, 9.2)) 
-    
-    # Destroy annoying Modals / E2EE Popups via JavaScript
     try:
-        driver.execute_script("""
-            document.querySelectorAll('[role="dialog"]').forEach(e => e.remove());
-            document.querySelectorAll('div[style*="background-color: rgba(0"]').forEach(e => e.remove());
-        """)
-        time.sleep(1)
-    except:
-        pass
-
-    # Find the DM input box (Strict DM selectors only)
-    selectors = ['div[data-testid="dmComposerTextInput"]', 'textarea[data-testid="dm-composer-textarea"]']
-    message_box = None
-    for selector in selectors:
+        driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
+        time.sleep(random.uniform(6.5, 9.2)) 
+        
+        # Destroy Modals
         try:
-            message_box = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
-            if message_box: break
-        except: pass
-    
-    if not message_box:
-        raise Exception("Inbox unreachable. (DMs might be closed, or Twitter is blocking the Cloud IP).")
-    
-    # Emulate human typing
-    for char in message:
-        message_box.send_keys(char)
-        time.sleep(random.uniform(0.01, 0.05))
+            driver.execute_script("""
+                document.querySelectorAll('[role="dialog"]').forEach(e => e.remove());
+                document.querySelectorAll('div[style*="background-color: rgba(0"]').forEach(e => e.remove());
+            """)
+            time.sleep(1)
+        except:
+            pass
+
+        # Find the DM input box
+        selectors = ['div[data-testid="dmComposerTextInput"]', 'textarea[data-testid="dm-composer-textarea"]']
+        message_box = None
+        for selector in selectors:
+            try:
+                message_box = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, selector)))
+                if message_box: break
+            except: pass
         
-    time.sleep(random.uniform(1.0, 2.0))
-    
-    # 🚨 THE FIX: Wait for the Send button, or fallback to hitting the ENTER key
-    try:
-        send_button = WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
-        )
-        driver.execute_script("arguments[0].click();", send_button)
-    except:
-        # If the button is hidden or missing, just hit ENTER inside the text box
-        message_box.send_keys(Keys.RETURN)
+        if not message_box:
+            raise Exception("Message input box not found. We might be on the wrong page.")
         
-    time.sleep(random.uniform(3.0, 4.5))
-    return True
+        # Emulate human typing
+        for char in message:
+            message_box.send_keys(char)
+            time.sleep(random.uniform(0.01, 0.05))
+            
+        time.sleep(random.uniform(1.0, 2.0))
+        
+        # Click Send or hit Enter
+        try:
+            send_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
+            )
+            driver.execute_script("arguments[0].click();", send_button)
+        except:
+            message_box.send_keys(Keys.RETURN)
+            
+        time.sleep(random.uniform(3.0, 4.5))
+        return True
+        
+    except Exception as e:
+        # DIAGNOSTIC CAPTURE
+        current_url = driver.current_url
+        page_source_snippet = driver.page_source[:500] if driver.page_source else "No source available"
+        error_trace = traceback.format_exc()
+        
+        diagnostic_msg = f"**Current URL:** {current_url}\n\n**HTML Snippet:**\n```html\n{page_source_snippet}\n```\n\n**Traceback:**\n```python\n{error_trace}\n```"
+        raise Exception(diagnostic_msg)
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
     tw_auth = st.secrets.get("twitter", {}).get("auth_token", "")
@@ -188,16 +194,22 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             message = generate_twitter_dm(handle, bio, status_container)
             
         if not message: 
-            time.sleep(1)
+            if status_container: status_container.warning(f"Skipping @{handle} because message generation failed.")
+            time.sleep(2)
             continue
             
-        # 2. Boot Cloud Browser (Lazy Loading)
+        # 2. Boot Cloud Browser
         if not driver:
-            if status_container: status_container.warning("Booting Cloud Stealth Browser... This takes ~10 seconds.")
-            driver = setup_stealth_browser()
-            driver.get("https://x.com/robots.txt") 
-            driver.add_cookie({'name': 'auth_token', 'value': tw_auth, 'domain': '.x.com', 'path': '/', 'secure': True})
-            driver.add_cookie({'name': 'ct0', 'value': tw_ct0, 'domain': '.x.com', 'path': '/', 'secure': True})
+            if status_container: status_container.warning("Booting Stealth Browser... Please wait.")
+            try:
+                driver = setup_stealth_browser()
+                driver.get("https://x.com/robots.txt") 
+                driver.add_cookie({'name': 'auth_token', 'value': tw_auth, 'domain': '.x.com', 'path': '/', 'secure': True})
+                driver.add_cookie({'name': 'ct0', 'value': tw_ct0, 'domain': '.x.com', 'path': '/', 'secure': True})
+            except Exception as e:
+                error_trace = traceback.format_exc()
+                if status_container: status_container.error(f"Browser Boot Failed:\n```python\n{error_trace}\n```")
+                return dms_fired, "Failed to start browser."
 
         if status_container: status_container.info(f"Browser navigating to @{handle}'s inbox...")
         
@@ -208,18 +220,17 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "DM Sent")
             if status_container: status_container.success(f"✅ Browser Success! Delivered to @{handle}.")
             
-            try:
-                import zynd_outreach_history
-                zynd_outreach_history.log_outreach_event(handle, "Abhinav", "Twitter / X (Selenium)", "Initial Pitch", message)
-            except: pass
-            
             if dms_fired < max_dms:
-                delay = random.randint(50, 90)
-                if status_container: status_container.write(f"⏳ Sleeping {delay}s to evade Twitter bot detection...")
+                delay = random.randint(45, 75)
+                if status_container: status_container.write(f"⏳ Sleeping {delay}s...")
                 time.sleep(delay)
                 
         except Exception as e:
-            if status_container: status_container.error(f"Browser failed for @{handle}: {e}")
+            if status_container: 
+                # This will print the massive diagnostic block we created above
+                st.error(f"🚨 **Execution Failure for @{handle}** 🚨")
+                st.markdown(str(e))
+                
             if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "DMs Closed / Failed")
             time.sleep(3)
             continue
