@@ -866,6 +866,8 @@ elif menu == "⚙️ Control Room":
                             from email.mime.text import MIMEText
                             from email.mime.multipart import MIMEMultipart
                             import re
+                            import requests
+                            import time
                             import gspread
                             from oauth2client.service_account import ServiceAccountCredentials
                             
@@ -897,25 +899,49 @@ elif menu == "⚙️ Control Room":
                                 if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower(): continue
                                 if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested"]: continue
                                     
-                                status_text.write(f"Drafting email for {username}...")
+                                status_text.write(f"Drafting highly-targeted email for {username}...")
                                 
                                 # 3. Generate Draft
                                 if email_mode == "✍️ Custom Template":
                                     subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
                                     body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
                                 else:
-                                    # Hit OpenRouter
-                                    import requests
-                                    prompt = f"Write a cold email to {username}. They starred {signal}. Mention Zynd. Format:\nSUBJECT: [Subj]\nBODY: [Body]"
+                                    # 🧠 WORLD-CLASS COLD OUTREACH PROMPT
+                                    prompt = f"""
+                                    You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
+                                    Write a casual, plain-text cold email to a developer named {username}.
+                                    They recently interacted with this GitHub repository: {signal}.
+                                    Their bio context: {bio}
+                                    
+                                    STRICT RULES:
+                                    1. NO MARKETING SPEAK. Never use words like "synergies", "collaboration", "hope this finds you well", or "delve".
+                                    2. Write like an engineer on Slack. Keep it extremely brief (max 3 sentences).
+                                    3. Subject line MUST be entirely lowercase and 3-5 words max.
+                                    4. Sign off simply as "Best, Abhinav". Do NOT use placeholders like [Your Name].
+                                    
+                                    Format EXACTLY like this:
+                                    SUBJECT: [your subject line]
+                                    BODY: [your email body]
+                                    """
+                                    
                                     api_key = st.secrets["openrouter"]["api_key"]
                                     resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
                                                          headers={"Authorization": f"Bearer {api_key}"}, 
-                                                         json={"model": "openai/gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]})
+                                                         json={
+                                                             "model": "openai/gpt-4o-mini", 
+                                                             "temperature": 0.3, # Low temperature forces adherence to rules
+                                                             "messages": [{"role": "user", "content": prompt}]
+                                                         })
+                                                         
                                     ai_text = resp.json()['choices'][0]['message']['content']
+                                    
+                                    # Strip markdown asterisks just in case the LLM tries to bold things
+                                    ai_text = ai_text.replace("**", "")
+                                    
                                     subj_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
                                     body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
-                                    subject = subj_match.group(1).strip() if subj_match else f"Quick question about {signal}"
-                                    body = body_match.group(1).strip() if body_match else "Hey, saw your work! Let's connect."
+                                    subject = subj_match.group(1).strip() if subj_match else f"quick question re: {signal}"
+                                    body = body_match.group(1).strip() if body_match else f"Hey {username},\n\nSaw you checking out {signal}. I'm building Zynd to help agent builders get discovered. What are you working on right now?\n\nBest,\nAbhinav"
 
                                 # 4. Fire SMTP
                                 try:
@@ -937,7 +963,6 @@ elif menu == "⚙️ Control Room":
                                     
                                     if emails_fired < email_cap:
                                         status_text.write(f"✅ Sent to {prospect_email}. Sleeping 10s to avoid spam filters...")
-                                        import time
                                         time.sleep(10)
                                         
                                 except Exception as e:
