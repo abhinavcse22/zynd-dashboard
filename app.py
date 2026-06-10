@@ -906,19 +906,26 @@ elif menu == "⚙️ Control Room":
                                     subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
                                     body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
                                 else:
-                                    # 🧠 WORLD-CLASS COLD OUTREACH PROMPT
+                                    # 🧠 WORLD-CLASS B2B SAAS COLD OUTREACH PROMPT
                                     prompt = f"""
                                     You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
-                                    Write a casual, plain-text cold email to a developer named {username}.
+                                    Write a highly effective, professional cold email to a developer named {username}.
                                     They recently interacted with this GitHub repository: {signal}.
                                     Their bio context: {bio}
                                     
-                                    STRICT RULES:
-                                    1. NO MARKETING SPEAK. Never use words like "synergies", "collaboration", "hope this finds you well", or "delve".
-                                    2. Write like an engineer on Slack. Keep it extremely brief (max 3 sentences).
-                                    3. Subject line MUST be entirely lowercase and 3-5 words max.
-                                    4. Sign off simply as "Best, Abhinav". Do NOT use placeholders like [Your Name].
+                                    Structure the email using this exact B2B sales framework:
+                                    1. The Hook: Acknowledge their interaction with {signal}. Transition smoothly into a relevant technical challenge they might face. (e.g., "I noticed your work with X... it got me thinking how you handle Y.")
+                                    2. The Value: Introduce Zynd. State clearly how it solves that challenge or helps builders like them. (e.g., "Zynd helps developers reduce friction by...", "We recently built Zynd so agents can get discovered...")
+                                    3. The Call to Action (CTA): A low-friction ask. (e.g., "Open to a 15-min chat next week?" or "Want to see a quick demo?")
                                     
+                                    STRICT RULES:
+                                    - Sound like an elite technical founder. Professional, intelligent, but conversational.
+                                    - DO NOT use cheesy marketing words ("synergies", "revolutionary", "delve").
+                                    - Keep it under 4 short paragraphs.
+                                    - Use proper capitalization and grammar.
+                                    - Sign off as "Best,\nAbhinav". Do NOT use placeholders like [Your Name].
+                                    - Subject line should read like a quick idea or relevant connection (e.g., "Quick idea regarding [repo]" or "[Name], a faster way to...").
+
                                     Format EXACTLY like this:
                                     SUBJECT: [your subject line]
                                     BODY: [your email body]
@@ -929,19 +936,19 @@ elif menu == "⚙️ Control Room":
                                                          headers={"Authorization": f"Bearer {api_key}"}, 
                                                          json={
                                                              "model": "openai/gpt-4o-mini", 
-                                                             "temperature": 0.3, # Low temperature forces adherence to rules
+                                                             "temperature": 0.4, # Adjusted to balance creativity with strict structure
                                                              "messages": [{"role": "user", "content": prompt}]
                                                          })
                                                          
                                     ai_text = resp.json()['choices'][0]['message']['content']
                                     
-                                    # Strip markdown asterisks just in case the LLM tries to bold things
+                                    # Strip markdown formatting
                                     ai_text = ai_text.replace("**", "")
                                     
                                     subj_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
                                     body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
-                                    subject = subj_match.group(1).strip() if subj_match else f"quick question re: {signal}"
-                                    body = body_match.group(1).strip() if body_match else f"Hey {username},\n\nSaw you checking out {signal}. I'm building Zynd to help agent builders get discovered. What are you working on right now?\n\nBest,\nAbhinav"
+                                    subject = subj_match.group(1).strip() if subj_match else f"Quick idea regarding {signal}"
+                                    body = body_match.group(1).strip() if body_match else f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
 
                                 # 4. Fire SMTP
                                 try:
