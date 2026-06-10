@@ -7,25 +7,26 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 Simplified Queries for Serper Free Tier (No OR, (), or - operators)
-# We use multiple simple queries instead of one complex one.
+# 🔥 "Caveman" Queries: No 'site:', no quotes, no advanced operators.
+# This completely bypasses the Serper.dev free tier paywall.
 SERPER_DORKS = [
-    'site:linkedin.com/in/ "LangGraph" "founder"',
-    'site:linkedin.com/in/ "LangGraph" "indie hacker"',
-    'site:linkedin.com/in/ "built with LangGraph"',
-    'site:linkedin.com/in/ "CrewAI" "founder"',
-    'site:linkedin.com/in/ "CrewAI" "indie hacker"',
-    'site:linkedin.com/in/ "built with CrewAI"',
-    'site:linkedin.com/in/ "n8n" "AI Automation Agency"',
-    'site:linkedin.com/in/ "n8n" "founder"',
-    'site:linkedin.com/in/ "building an AI agent"',
-    'site:linkedin.com/in/ "MCP server" "founder"'
+    'linkedin.com/in LangGraph founder',
+    'linkedin.com/in LangGraph indie hacker',
+    'linkedin.com/in built with LangGraph',
+    'linkedin.com/in CrewAI founder',
+    'linkedin.com/in CrewAI indie hacker',
+    'linkedin.com/in built with CrewAI',
+    'linkedin.com/in n8n AI Automation',
+    'linkedin.com/in n8n founder',
+    'linkedin.com/in building an AI agent',
+    'linkedin.com/in MCP server founder'
 ]
 
 # 🛑 The Employee Blacklist (Python handles what the API won't)
 BLACKLIST_PHRASES = [
     "at langchain", "at crewai", "founder of crewai", "at n8n", 
-    "working at", "employed at", "software engineer at langchain"
+    "working at", "employed at", "software engineer at langchain",
+    "software engineer", "developer at"
 ]
 
 def run_linkedin_scraper():
@@ -58,12 +59,12 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Secure. Booting Python-Filtered Pipeline...")
+    st.success("✅ Secure. Booting Raw Text API Pipeline...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
     for query in SERPER_DORKS:
-        st.text(f"↳ Routing Simple Query: {query}")
+        st.text(f"↳ Routing Raw Query: {query}")
         try:
             url = "https://google.serper.dev/search"
             payload = {
@@ -85,13 +86,13 @@ def run_linkedin_scraper():
             organic_results = data.get("organic", [])
             
             if not organic_results:
-                st.text("    ↳ ⚠️ 0 profiles found for this query.")
+                st.text("    ↳ ⚠️ 0 results returned from Google.")
                 continue
 
             for result in organic_results:
                 profile_url = result.get("link", "").strip()
                 
-                # Deduplication & Link Verification
+                # 🛡️ Because we dropped 'site:', we MUST force Python to check if the link is actually LinkedIn!
                 if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                 
@@ -101,7 +102,7 @@ def run_linkedin_scraper():
                 snippet = result.get("snippet", "")
                 clean_bio = str(snippet).replace('\n', ' ')[:300]
                 
-                # 🛑 Python executes the Blacklist Filter here instead of Google
+                # 🛑 Python executes the Blacklist Filter
                 is_employee = False
                 for blacklisted in BLACKLIST_PHRASES:
                     if blacklisted in clean_bio.lower() or blacklisted in raw_title.lower():
@@ -112,7 +113,7 @@ def run_linkedin_scraper():
                     continue  # Skip this person, they triggered the blacklist
                 
                 new_leads.append([
-                    "Serper Pro Engine", 
+                    "Serper Free Engine", 
                     "LinkedIn", 
                     name, 
                     profile_url, 
