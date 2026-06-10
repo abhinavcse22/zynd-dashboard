@@ -653,13 +653,6 @@ elif menu == "⚙️ Control Room":
                                 st.cache_data.clear()
                             else: st.info("Scan complete. No new unique signals caught.")
                         except Exception as e: st.error(f"Engine Error: {str(e)}")
-        
-        with st.expander("💼 LinkedIn Social Listening Pipeline"):
-          if st.button("🚀 Run LinkedIn Scraper & Outreach"):
-           with st.spinner("Processing LinkedIn..."):
-             import main as linkedin_pipeline
-             results = linkedin_pipeline.run(dry_run=False, limit=20)
-             st.success("LinkedIn Outreach Campaign Complete.")
 
         st.markdown("### 🌐 Structural Aggregators & Workarounds")
         with st.container(border=True):
