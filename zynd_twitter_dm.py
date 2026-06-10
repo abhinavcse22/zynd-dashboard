@@ -4,13 +4,36 @@ import requests
 import time
 import random
 import asyncio
+import threading
 import re
 from oauth2client.service_account import ServiceAccountCredentials
 from twikit import Client
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-def generate_twitter_dm(prospect_name, bio):
+def run_async_in_thread(coro):
+    """Safely executes async code inside Streamlit's synchronous threads without deadlocking."""
+    result = []
+    exception = []
+    def thread_target():
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            res = loop.run_until_complete(coro)
+            result.append(res)
+            loop.close()
+        except Exception as e:
+            exception.append(e)
+    
+    t = threading.Thread(target=thread_target)
+    t.start()
+    t.join()
+    
+    if exception:
+        raise exception[0]
+    return result[0] if result else None
+
+def generate_twitter_dm(prospect_name, bio, status_container):
     """Generates the highly-constrained founder-style cold DM payload."""
     headers = {
         "Authorization": f"Bearer {st.secrets['openrouter']['api_key']}",
@@ -26,40 +49,31 @@ def generate_twitter_dm(prospect_name, bio):
 
     STRICT RULES:
     1. ALL LOWERCASE.
-    2. NEVER start with an "@" symbol, a name, or a greeting. Start directly with the observation (e.g., "saw you are...", "noticed your...").
-    3. YOU MUST MENTION "zynd" exactly as shown. Do not drop it.
+    2. NEVER start with an "@" symbol, a name, or a greeting. Start directly with the observation.
+    3. YOU MUST MENTION "zynd".
     4. No punctuation at the very end of the message.
     5. MAX 25 WORDS total.
-
-    Example 1: saw you scaling rag pipelines. building zynd (agent os) btw. what vector db are you using
-    Example 2: noticed you doing web3 research. building zynd (agent os) btw. what rpc provider do u use
-
-    Return ONLY the raw text to send. No quotes, no intro.
     """
     
-    data = {
-        "model": "openai/gpt-4o-mini", 
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.2
-    }
+    data = {"model": "openai/gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.2}
     
     try:
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=20)
+        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data, timeout=15)
         if response.status_code == 200:
             return response.json()['choices'][0]['message']['content'].replace('"', '').strip()
+        else:
+            if status_container: status_container.error(f"OpenRouter Error: {response.text}")
+            return None
     except Exception as e:
-        print(f"⚠️ OpenRouter Error: {e}")
-    return None
+        if status_container: status_container.error(f"OpenRouter Connection Error: {e}")
+        return None
 
-async def try_api_send(tw_auth, tw_ct0, handle, message):
+async def _execute_twikit_send(tw_auth, tw_ct0, handle, message):
     """Executes pure cloud-native direct messaging via official client cookies."""
-    client = Client(language='en-US')
-    client.set_cookies({
-        'auth_token': tw_auth, 
-        'ct0': tw_ct0
-    })
+    client = Client('en-US')
+    client.set_cookies({'auth_token': tw_auth, 'ct0': tw_ct0})
     user = await client.get_user_by_screen_name(handle)
-    await client.send_dm(user.id, message)
+    await client.send_dm([user.id], message)
     return True
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
@@ -95,16 +109,8 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             break
             
         raw_handle = str(row.get("Tweet URL", row.get("Username", row.get("handle", row.get("User", ""))))).strip()
-        if not raw_handle or "http" in raw_handle:
-            url = str(row.get("Content", row.get("Profile URL", row.get("User URL", ""))))
-            if "x.com/" in url or "twitter.com/" in url:
-                parts = url.split("/")
-                for i, p in enumerate(parts):
-                    if p in ["x.com", "twitter.com"] and i + 1 < len(parts):
-                        raw_handle = parts[i + 1]
-                        break
-                        
         handle = raw_handle.replace("@", "").split("?")[0].strip()
+        
         if not handle or "http" in handle: 
             continue
             
@@ -115,25 +121,25 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             continue
             
         # 1. Draft Message Matrix
+        if status_container: 
+            status_container.info(f"Drafting AI DM for @{handle}...")
+            
         if mode == "✍️ Custom Template":
             message = custom_msg.replace("{name}", handle).replace("{bio}", bio)
         else:
-            if status_container: 
-                status_container.info(f"Drafting AI DM for @{handle}...")
-            message = generate_twitter_dm(handle, bio)
+            message = generate_twitter_dm(handle, bio, status_container)
             
         if not message: 
+            if status_container: status_container.warning(f"Skipping @{handle} due to AI generation failure.")
+            time.sleep(2)
             continue
             
-        # 2. Pure Cloud API Delivery Loop
+        # 2. Pure Cloud API Delivery via Isolated Thread
         if status_container: 
             status_container.info(f"Deploying Twikit payload to @{handle}...")
             
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(try_api_send(tw_auth, tw_ct0, handle, message))
-            loop.close()
+            run_async_in_thread(_execute_twikit_send(tw_auth, tw_ct0, handle, message))
             
             dms_fired += 1
             if status_col_idx: 
@@ -142,14 +148,11 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
             if status_container: 
                 status_container.success(f"✅ Success! Delivered to @{handle}.")
                 
-            # Log to outreach ledger
             try:
                 import zynd_outreach_history
                 zynd_outreach_history.log_outreach_event(handle, "Abhinav", "Twitter / X (Cloud API)", "Initial Pitch", message)
-            except: 
-                pass
+            except: pass
             
-            # Anti-throttling human-emulation delay
             if dms_fired < max_dms:
                 delay = random.randint(45, 90)
                 if status_container: 
@@ -158,7 +161,7 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
                 
         except Exception as e:
             if status_container: 
-                status_container.error(f"❌ API Rejected delivery for @{handle}: {e}")
+                status_container.error(f"❌ Twikit API Failed for @{handle}: {e}")
             if status_col_idx: 
                 sheet.update_cell(idx + 2, status_col_idx, "API Failed / Closed")
             time.sleep(3)
