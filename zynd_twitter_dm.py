@@ -79,6 +79,8 @@ def setup_stealth_browser():
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     return driver
 
+from selenium.webdriver.common.keys import Keys
+
 def try_browser_send(driver, handle, message):
     driver.get(f"https://x.com/messages/compose?recipient_id={handle}")
     time.sleep(random.uniform(6.5, 9.2)) 
@@ -93,8 +95,8 @@ def try_browser_send(driver, handle, message):
     except:
         pass
 
-    # Find the DM input box
-    selectors = ['div[data-testid="dmComposerTextInput"]', 'div[data-testid="tweetTextarea_0"]', 'textarea[data-testid="dm-composer-textarea"]']
+    # Find the DM input box (Strict DM selectors only)
+    selectors = ['div[data-testid="dmComposerTextInput"]', 'textarea[data-testid="dm-composer-textarea"]']
     message_box = None
     for selector in selectors:
         try:
@@ -103,7 +105,7 @@ def try_browser_send(driver, handle, message):
         except: pass
     
     if not message_box:
-        raise Exception("Inbox unreachable (DMs closed or Cloud IP blocked).")
+        raise Exception("Inbox unreachable. (DMs might be closed, or Twitter is blocking the Cloud IP).")
     
     # Emulate human typing
     for char in message:
@@ -112,8 +114,16 @@ def try_browser_send(driver, handle, message):
         
     time.sleep(random.uniform(1.0, 2.0))
     
-    send_button = driver.find_element(By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]')
-    driver.execute_script("arguments[0].click();", send_button)
+    # 🚨 THE FIX: Wait for the Send button, or fallback to hitting the ENTER key
+    try:
+        send_button = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="dmComposerSendButton"]'))
+        )
+        driver.execute_script("arguments[0].click();", send_button)
+    except:
+        # If the button is hidden or missing, just hit ENTER inside the text box
+        message_box.send_keys(Keys.RETURN)
+        
     time.sleep(random.uniform(3.0, 4.5))
     return True
 
