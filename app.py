@@ -197,6 +197,7 @@ def load_full_database():
     tw = secure_load("Twitter Leads")
     star = secure_load("github_stargazer_leads")
     fork = secure_load("Fork Sniper Leads")
+    li = secure_load("LinkedIn Leads")
     
     # Load Newly Revealed Extensions
     tele = secure_load("Telegram Leads")
@@ -207,7 +208,7 @@ def load_full_database():
     hack = secure_load("Hackathon Leads")
     contrib = secure_load("Contributor Leads")
     
-    return gh, rd, tw, star, fork, tele, inf, issue, disc, direc, hack, contrib
+    return gh, rd, tw, star, fork, tele, inf, issue, disc, direc, hack, contrib, li
 
 def clean_database():
     """Enterprise-grade background sweeper that cleans all operational tabs."""
@@ -255,7 +256,7 @@ def clean_database():
     return total_removed
 
 # Unpack all 12 databases safely
-df_gh, df_rd, df_tw, df_star, df_fork, df_tele, df_inf, df_issue, df_disc, df_dir, df_hack, df_contrib = load_full_database()
+df_gh, df_rd, df_tw, df_star, df_fork, df_tele, df_inf, df_issue, df_disc, df_dir, df_hack, df_contrib, df_li = load_full_database()
 
 # Safe conversions for metric generation logic
 if not df_rd.empty and 'Lead Score (1-10)' in df_rd.columns:
@@ -570,7 +571,7 @@ elif menu == "💬 Communities & Comms":
     st.header("Encrypted Network Intelligence")
     st.write("Leads extracted directly from targeted Discord, Slack, and Telegram channels.")
     
-    c_tab1, c_tab2 = st.tabs(["👻 Telegram Leads", "🥷 Discord/Slack Leads"])
+    c_tab1, c_tab2, c_tab3 = st.tabs(["👻 Telegram Leads", "🥷 Discord/Slack Leads", "💼 LinkedIn Leads"])
     
     with c_tab1:
         st.subheader("Telegram Extracted Profiles")
@@ -583,6 +584,20 @@ elif menu == "💬 Communities & Comms":
         display_paginated_table(df_disc, "disc_tbl")
         if not df_disc.empty:
             st.download_button(label="📥 Export Discord Leads", data=df_disc.to_csv(index=False).encode('utf-8'), file_name='zynd_discord_leads.csv', mime='text/csv')
+
+    with c_tab3:
+        st.subheader("💼 LinkedIn High-Intent Activity Matrix")
+        if 'df_li' in globals() and not df_li.empty:
+            display_paginated_table(df_li, "li_tbl")
+            st.download_button(
+                label="📥 Export LinkedIn Leads to CSV", 
+                data=df_li.to_csv(index=False).encode('utf-8'), 
+                file_name='zynd_linkedin_leads.csv', 
+                mime='text/csv',
+                type="primary"
+            )
+        else:
+            st.info("No LinkedIn data row collections parsed yet. Run the engine inside the Control Room.")
 
 # ==========================================
 # 🌐 TAB: WEB & INFLUENCERS (NEW)
