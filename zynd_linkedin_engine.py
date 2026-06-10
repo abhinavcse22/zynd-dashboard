@@ -7,25 +7,44 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 High-intent profile dorks (Google handles these perfectly via Serper)
+# 🔥 Highly-Tuned Search Queries 
+# Focuses on 'Action Verbs' (built with) and 'Personas' (founder, indie hacker)
+# Uses the minus sign (-) to tell Google to exclude actual employees.
 SERPER_DORKS = [
-    'site:linkedin.com/in/ "LangGraph" (engineer OR builder OR developer)',
-    'site:linkedin.com/in/ "CrewAI" (founder OR developer OR engineer)',
-    'site:linkedin.com/in/ "n8n" "AI agent"',
-    'site:linkedin.com/in/ "building an AI agent"'
+    # LangGraph
+    'site:linkedin.com/in/ ("founder" OR "indie hacker" OR "solopreneur") "LangGraph" -"at Langchain" -"working at"',
+    'site:linkedin.com/in/ "built with LangGraph" OR "using LangGraph"',
+    
+    # CrewAI
+    'site:linkedin.com/in/ ("founder" OR "indie hacker" OR "CEO") "CrewAI" -"founder of CrewAI" -"at CrewAI"',
+    'site:linkedin.com/in/ "built with CrewAI" OR "using CrewAI"',
+    
+    # n8n & Automation Agencies
+    'site:linkedin.com/in/ "AI Automation Agency" OR "AIAA" "n8n"',
+    'site:linkedin.com/in/ "founder" "n8n" "AI workflow" -"at n8n"',
+    
+    # General High-Intent Agent Founders
+    'site:linkedin.com/in/ "building an AI agent" OR "building AI agents" "founder"',
+    'site:linkedin.com/in/ "AI agent" "indie hacker"',
+    'site:linkedin.com/in/ "MCP server" "founder" OR "builder"'
+]
+
+# 🛑 The Employee Blacklist
+# If any of these exact phrases appear in their headline/bio, we instantly drop them.
+BLACKLIST_PHRASES = [
+    "at langchain", "at crewai", "founder of crewai", "at n8n", 
+    "working at openai", "software engineer at langchain", "employed at"
 ]
 
 def run_linkedin_scraper():
     st.info("🔌 Authenticating Database & API Connections...")
     
-    # 1. Verify Serper API Key
     try:
         serper_key = st.secrets["serper"]["api_key"]
     except KeyError:
         st.error("🔑 Serper API Key Missing! Go to Streamlit Secrets and add [serper] api_key.")
         return 0
 
-    # 2. Authenticate Google Sheets
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -47,25 +66,24 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Secure. Booting Serper.dev Residential Proxy Engine...")
+    st.success("✅ Secure. Booting High-Volume Pipeline...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
-    # --- SERPER GOOGLE API ENGINE ---
     for query in SERPER_DORKS:
-        st.text(f"↳ Routing via Residential Proxy: {query}")
+        st.text(f"↳ Routing High-Volume Query: {query}")
         try:
             url = "https://google.serper.dev/search"
             payload = {
                 "q": query,
-                "num": 10 # Get 10 results per query
+                "num": 50  # 🔥 Increased from 10 to 50 results per query!
             }
             headers = {
                 'X-API-KEY': serper_key,
                 'Content-Type': 'application/json'
             }
             
-            response = requests.post(url, headers=headers, json=payload, timeout=15)
+            response = requests.post(url, headers=headers, json=payload, timeout=20)
             
             if response.status_code != 200:
                 st.warning(f"    ↳ API Error: {response.text}")
@@ -81,20 +99,28 @@ def run_linkedin_scraper():
             for result in organic_results:
                 profile_url = result.get("link", "").strip()
                 
-                # Verify it's a LinkedIn profile
+                # Deduplication & Link Verification
                 if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                 
-                # Clean the Name from the Google Title
                 raw_title = result.get("title", "LinkedIn Builder")
                 name = raw_title.split('-')[0].split('|')[0].strip()
                 
-                # Get the Bio snippet
                 snippet = result.get("snippet", "")
                 clean_bio = str(snippet).replace('\n', ' ')[:300]
                 
+                # 🛑 Execute the Blacklist Filter
+                is_employee = False
+                for blacklisted in BLACKLIST_PHRASES:
+                    if blacklisted in clean_bio.lower() or blacklisted in raw_title.lower():
+                        is_employee = True
+                        break
+                        
+                if is_employee:
+                    continue  # Skip this person, they are an employee!
+                
                 new_leads.append([
-                    "Serper Google API", 
+                    "Serper Pro Engine", 
                     "LinkedIn", 
                     name, 
                     profile_url, 
@@ -105,17 +131,15 @@ def run_linkedin_scraper():
                     9
                 ])
                 existing_urls.add(profile_url.lower())
-                st.text(f"    ↳ ✅ Sniped Profile: {name}")
+                st.text(f"    ↳ ✅ Sniped Target: {name}")
                 
-            # Quick pause to be safe, though Serper handles rate limits well
             time.sleep(1.0)
                 
         except Exception as e:
             st.warning(f"⚠️ Search Error: {str(e)}")
 
-    # --- FINAL PUSH ---
     if new_leads:
-        st.success(f"⬆️ Uploading {len(new_leads)} fresh leads to Database...")
+        st.success(f"⬆️ Uploading {len(new_leads)} fresh, highly-targeted leads to Database...")
         sheet.append_rows(new_leads)
         return len(new_leads)
         
