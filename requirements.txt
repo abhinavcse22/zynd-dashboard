@@ -1,27 +1,34 @@
+# --- Core UI & Data App Framework ---
 streamlit
 pandas
-requests
+python-dateutil
+markdown
+plotly
+
+# --- API Clients & Networking ---
+requests>=2.31.0
+google-api-python-client
 gspread
 oauth2client
-python-dateutil
+python-dotenv>=1.0.0
+
+# --- Web Scraping & Aggregation ---
+beautifulsoup4
 feedparser
-beautifulsoup4
-plotly
-PyGithub
-telethon
-googlesearch-python
-google-api-python-client
-beautifulsoup4
-markdown
-google-generativeai
-git+https://github.com/mahrtayyab/tweety.git
-groq
-tweety-ns
 duckduckgo-search
+
+# --- AI & LLM Orchestration ---
+google-generativeai
+anthropic>=0.40.0
+groq
+
+# --- Local Automation (Mac Worker Fallback) ---
 selenium==4.18.1
 webdriver-manager==4.0.1
-twikit
+
+# --- Distribution & Logging Infrastructure ---
+PyGithub
+telethon
+
+# --- Cloud Outbound Social Engines (Fixed & Cleaned) ---
 git+https://github.com/d60/twikit.git@main
-anthropic>=0.40.0
-requests>=2.31.0
-python-dotenv>=1.0.0
