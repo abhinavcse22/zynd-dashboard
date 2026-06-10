@@ -833,11 +833,11 @@ elif menu == "⚙️ Control Room":
                                 st.markdown(res)
 
             # ==========================================
-            # 🚨 THE NEW SAAS EMAIL DISPATCHER BLOCK 🚨
+            # 🚨 100% CLOUD EMAIL DISPATCHER (NO MAC REQUIRED) 🚨
             # ==========================================
             with st.container(border=True):
-                st.subheader("📡 SaaS Email Dispatcher (Asynchronous)")
-                st.write("Fires personalized sequences in the background without freezing your dashboard.")
+                st.subheader("📡 Cloud Email Dispatcher")
+                st.write("Fires personalized sequences directly from this dashboard.")
                 
                 with st.expander("🔑 Connect Your Email (SMTP)"):
                     user_smtp_host = st.text_input("SMTP Host", "smtp.gmail.com")
@@ -853,83 +853,97 @@ elif menu == "⚙️ Control Room":
                 if email_mode == "✍️ Custom Template":
                     st.info("Variables you can use: `{name}`, `{repo}`, `{bio}`")
                     custom_subj = st.text_input("Subject Line", "Quick question about {repo}")
-                    custom_msg = st.text_area("Email Body", "Hey {name},\n\nSaw you contributing to {repo}. I'm working on a platform called Zynd for AI agents...\n\nCheers,\nAbhinav", height=150)
+                    custom_msg = st.text_area("Email Body", "Hey {name},\n\nSaw you contributing to {repo}. I'm working on Zynd...\n\nCheers,\nAbhinav", height=150)
                 
-                email_cap = st.slider("Max Broadcast Allocation (Daily Safety Limit)", 1, 50, 5, key="email_broadcast_cap")
+                email_cap = st.slider("Max Broadcast Allocation", 1, 50, 5, key="email_broadcast_cap")
                 
-                # ADDED: The text input for your localhost.run URL
-                email_backend_url = st.text_input("🔗 Backend API Tunnel URL", value="http://localhost:8000", key="email_tunnel_url")
-                
-                if st.button("🚀 Start Outreach Campaign"):
+                if st.button("🚀 Start Cloud Outreach Campaign"):
                     if not user_smtp_user or not user_smtp_pass:
                         st.warning("Please connect your email credentials first.")
                     else:
-                        with st.spinner("Queueing campaign..."):
-                            payload = {
-                                "user_id": "test_user_001",
-                                "target_segment": "GitHub Stargazers",
-                                "max_emails": email_cap,
-                                "smtp_host": user_smtp_host,
-                                "smtp_port": user_smtp_port,
-                                "smtp_user": user_smtp_user,
-                                "smtp_pass": user_smtp_pass,
-                                "mode": email_mode,
-                                "custom_subject": custom_subj,
-                                "custom_body": custom_msg
-                            }
+                        with st.spinner("Executing Cloud Campaign... Do not close this tab until finished."):
+                            import smtplib
+                            from email.mime.text import MIMEText
+                            from email.mime.multipart import MIMEMultipart
+                            import re
+                            import gspread
+                            from oauth2client.service_account import ServiceAccountCredentials
                             
-                            try:
-                                # FIXED: Now dynamically uses the URL you paste in the UI
-                                target_endpoint = f"{email_backend_url.rstrip('/')}/api/start-campaign"
-                                response = requests.post(target_endpoint, json=payload)
+                            # 1. Connect to DB
+                            scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+                            creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+                            client = gspread.authorize(creds)
+                            sheet = client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet("github_stargazer_leads")
+                            
+                            records = sheet.get_all_records()
+                            headers = sheet.row_values(1)
+                            status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
+
+                            emails_fired = 0
+                            
+                            # 2. Progress UI
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            for idx, row in enumerate(records):
+                                if emails_fired >= email_cap: break
+                                    
+                                prospect_email = str(row.get("public_email", "")).strip()
+                                status = str(row.get("outreach_status", "Pending")).strip()
+                                username = str(row.get("github_username", "Developer")).strip()
+                                bio = str(row.get("bio", "")).strip()
+                                signal = str(row.get("source_repo", "GitHub")).strip()
                                 
-                                if response.status_code == 200:
-                                    st.success("✅ Campaign successfully queued! You can safely navigate away; emails are sending in the background.")
+                                if not prospect_email or "@" not in prospect_email or "noreply" in prospect_email.lower(): continue
+                                if status in ["Message 1 Sent", "DO NOT CONTACT 🛑", "Replied - Interested"]: continue
+                                    
+                                status_text.write(f"Drafting email for {username}...")
+                                
+                                # 3. Generate Draft
+                                if email_mode == "✍️ Custom Template":
+                                    subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
+                                    body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
                                 else:
-                                    st.error(f"Failed to queue campaign. Server responded with: {response.status_code}")
-                            except Exception as e:
-                                st.error(f"Could not reach execution server: {e}. Make sure your tunnel is running.")
+                                    # Hit OpenRouter
+                                    import requests
+                                    prompt = f"Write a cold email to {username}. They starred {signal}. Mention Zynd. Format:\nSUBJECT: [Subj]\nBODY: [Body]"
+                                    api_key = st.secrets["openrouter"]["api_key"]
+                                    resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
+                                                         headers={"Authorization": f"Bearer {api_key}"}, 
+                                                         json={"model": "openai/gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]})
+                                    ai_text = resp.json()['choices'][0]['message']['content']
+                                    subj_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
+                                    body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
+                                    subject = subj_match.group(1).strip() if subj_match else f"Quick question about {signal}"
+                                    body = body_match.group(1).strip() if body_match else "Hey, saw your work! Let's connect."
 
-            # ==========================================
-            # 🚨 THE NEW C2 CLOUD TRIGGER BLOCK 🚨
-            # ==========================================
-            with st.container(border=True):
-                st.subheader("🐦 Local Twitter DM Autopilot")
-                st.write("Triggers your Mac M2's local background worker using your home residential network.")
-                
-                tw_mode = st.radio("Twitter Generation Mode", ["🧠 AI Personalized", "✍️ Custom Template"], horizontal=True, key="tw_radio")
-                
-                tw_custom_msg = ""
-                if tw_mode == "✍️ Custom Template":
-                    st.info("Variables you can use: `{name}`, `{bio}`")
-                    tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space...", height=100)
-                
-                st.markdown("### 🚀 Dispatch Campaign")
-                max_dms_input = st.slider("Max DMs to send this batch", 1, 20, 5, key="twitter_cap")
-                worker_url = st.text_input("🔗 Local Worker Tunnel URL (ngrok)", value="http://localhost:8000")
+                                # 4. Fire SMTP
+                                try:
+                                    msg = MIMEMultipart()
+                                    msg['From'] = user_smtp_user
+                                    msg['To'] = prospect_email
+                                    msg['Subject'] = subject
+                                    msg.attach(MIMEText(body, 'plain'))
+                                    
+                                    server = smtplib.SMTP(user_smtp_host, user_smtp_port)
+                                    server.starttls()
+                                    server.login(user_smtp_user, user_smtp_pass)
+                                    server.sendmail(user_smtp_user, prospect_email, msg.as_string())
+                                    server.quit()
+                                    
+                                    emails_fired += 1
+                                    progress_bar.progress(int((emails_fired / email_cap) * 100))
+                                    if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
+                                    
+                                    if emails_fired < email_cap:
+                                        status_text.write(f"✅ Sent to {prospect_email}. Sleeping 10s to avoid spam filters...")
+                                        import time
+                                        time.sleep(10)
+                                        
+                                except Exception as e:
+                                    st.error(f"Failed to send to {prospect_email}: {e}")
 
-                if st.button("📡 Trigger Local Execution Node", type="primary", use_container_width=True):
-                    with st.spinner("Firing webhook to local Mac..."):
-                        try:
-                            # The payload matches the FastAPI model we just built
-                            payload = {
-                                "max_dms": max_dms_input,
-                                "sheet_tab": "Twitter Leads" 
-                            }
-                            
-                            # Ping the local FastAPI server
-                            target_endpoint = f"{worker_url.rstrip('/')}/dispatch"
-                            response = requests.post(target_endpoint, json=payload, timeout=5)
-                            
-                            if response.status_code == 200:
-                                st.success("✅ Webhook fired successfully! Your Mac is now executing the campaign in the background.")
-                            else:
-                                st.error(f"⚠️ Webhook failed. Server responded: {response.text}")
-                                
-                        except requests.exceptions.ConnectionError:
-                            st.error("🚨 Connection Refused: Is your Mac Worker currently running? (Run `python mac_worker_2.py` in your terminal).")
-                        except requests.exceptions.MissingSchema:
-                            st.error("🚨 Invalid URL: Make sure it starts with http:// or https://")
+                            status_text.success(f"🏁 Campaign Complete! {emails_fired} emails sent successfully.")
                                         
         with ai_col2:
             with st.container(border=True):
