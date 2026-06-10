@@ -15,8 +15,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-from selenium_stealth import stealth
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium_stealth import stealth
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -93,40 +93,27 @@ def setup_stealth_browser():
 
 def try_browser_send(driver, handle, message, status_container):
     try:
-        # 1. Profile Routing (The Human Way)
+        # 1. Profile Routing
         driver.get(f"https://x.com/{handle}")
-        time.sleep(random.uniform(6.0, 9.0))
+        time.sleep(random.uniform(7.0, 10.0))
         
-        if status_container: status_container.info(f"Scanning @{handle}'s profile for DM button...")
+        if status_container: status_container.info(f"Scanning @{handle}'s profile...")
 
-        # 2. Click DM Button on Profile
+        # 2. Click DM Button
         try:
             dm_btn = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-testid="sendDMFromProfile"]'))
             )
             driver.execute_script("arguments[0].click();", dm_btn)
         except:
-            raise Exception("No DM button found. DMs are closed or they do not follow you.")
+            raise Exception("No DM button found. DMs are likely closed.")
 
-        time.sleep(random.uniform(3.0, 5.0))
+        time.sleep(random.uniform(4.0, 6.0))
 
-        # 3. Safely Close Tooltips (Without destroying the chat box)
-        try:
-            driver.execute_script("""
-                let closeBtns = document.querySelectorAll('div[aria-label="Close"]');
-                closeBtns.forEach(b => b.click());
-            """)
-        except: pass
-
-        # 4. Target the Draft.js framework directly (Discovered from your HTML logs)
-        selectors = [
-            'div[data-testid="dmComposerTextInput"]',
-            'div.public-DraftEditor-content',
-            'aside[aria-label="Start a new message"] div[role="textbox"]',
-            'div[role="textbox"]'
-        ]
-        
+        # 3. Find Draft.js Chat Box
         message_box = None
+        selectors = ['div[data-testid="dmComposerTextInput"]', 'div.public-DraftEditor-content', 'div[role="textbox"]']
+        
         for selector in selectors:
             try:
                 elements = driver.find_elements(By.CSS_SELECTOR, selector)
@@ -138,26 +125,16 @@ def try_browser_send(driver, handle, message, status_container):
             except: pass
             
         if not message_box:
-            raise Exception("Chat interface failed to render. Twitter layout shifted.")
+            raise Exception("Chat interface failed to render.")
             
-        if status_container: status_container.info(f"Typing payload to @{handle}...")
-        
-        # 5. Type and Send (with bulletproof ActionChains fallback)
-        try:
-            # Force focus using JavaScript
-            driver.execute_script("arguments[0].focus();", message_box)
-            time.sleep(0.5)
+        # 4. Type and Send
+        driver.execute_script("arguments[0].focus();", message_box)
+        for char in message:
+            message_box.send_keys(char)
+            time.sleep(random.uniform(0.01, 0.05))
             
-            for char in message:
-                message_box.send_keys(char)
-                time.sleep(random.uniform(0.01, 0.05))
-                
-            time.sleep(1.0)
-            message_box.send_keys(Keys.RETURN)
-        except:
-            # Absolute Fallback: If standard send_keys fails, force typing via ActionChains
-            ActionChains(driver).send_keys(message).send_keys(Keys.RETURN).perform()
-            
+        time.sleep(1.0)
+        message_box.send_keys(Keys.RETURN)
         time.sleep(random.uniform(3.0, 4.5))
         return True
         
@@ -167,15 +144,14 @@ def try_browser_send(driver, handle, message, status_container):
             if status_container: status_container.image("cloud_browser_debug.png")
         except: pass
             
-        current_url = driver.current_url
-        raise Exception(f"**Current URL:** {current_url}\n\n**Error:** {str(e)}")
+        raise Exception(f"Execution Error: {str(e)}")
 
 def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_container=None):
     tw_auth = st.secrets.get("twitter", {}).get("auth_token", "")
     tw_ct0 = st.secrets.get("twitter", {}).get("ct0", "")
     
     if not tw_auth or not tw_ct0:
-        return 0, "Error: Missing Twitter tokens in Streamlit Secrets."
+        return 0, "Error: Missing Twitter tokens."
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -183,82 +159,47 @@ def dispatch_twitter_dms(max_dms=5, mode="AI Generated", custom_msg="", status_c
     
     try:
         sheet = client.open_by_key(SHEET_ID).worksheet("Twitter Leads")
-        raw_data = sheet.get_all_values()
-        if not raw_data or len(raw_data) < 2: return 0, "No leads found."
-            
-        headers = [str(h).strip() if str(h).strip() else f"Unnamed_{idx}" for idx, h in enumerate(raw_data[0])]
-        records = [dict(zip(headers, row + [""] * (len(headers) - len(row)))) for row in raw_data[1:]]
-        
-        status_col_name = next((h for h in ["outreach_status", "Status", "status"] if h in headers), None)
-        status_col_idx = headers.index(status_col_name) + 1 if status_col_name else None
+        raw_data = sheet.get_all_records()
+        status_col_name = next((h for h in ["outreach_status", "Status", "status"] if h in raw_data[0].keys()), None)
     except Exception as e:
         return 0, f"Database Error: {str(e)}"
         
     dms_fired = 0
     driver = None
     
-    for idx, row in enumerate(records):
+    for idx, row in enumerate(raw_data):
         if dms_fired >= max_dms: break
             
-        raw_handle = str(row.get("Tweet URL", row.get("Username", row.get("handle", row.get("User", ""))))).strip()
+        raw_handle = str(row.get("Tweet URL", row.get("Username", row.get("handle", "")))).strip()
         handle = raw_handle.replace("@", "").split("?")[0].strip()
+        status = str(row.get(status_col_name, "")).strip().lower() if status_col_name else ""
         
-        if not handle or "http" in handle: continue
+        if not handle or "http" in handle or "sent" in status: continue
             
-        status = str(row.get(status_col_name, "Pending")).strip().lower() if status_col_name else "pending"
-        bio = str(row.get("Unnamed_6", row.get("bio", str(row.get("Content", ""))))).strip()
-        
-        if any(kw in status for kw in ["sent", "stop", "failed", "closed"]): continue
+        message = custom_msg.replace("{name}", handle) if mode == "✍️ Custom Template" else generate_twitter_dm(handle, row.get("bio", ""), status_container)
+        if not message: continue
             
-        # 1. Draft Message
-        if status_container: status_container.info(f"🧠 AI Context Engine analyzing @{handle}...")
-        
-        if mode == "✍️ Custom Template":
-            message = custom_msg.replace("{name}", handle).replace("{bio}", bio)
-        else:
-            message = generate_twitter_dm(handle, bio, status_container)
-            
-        if not message: 
-            if status_container: status_container.warning(f"Skipping @{handle} because message generation failed.")
-            time.sleep(2)
-            continue
-            
-        # 2. Boot Cloud Browser
         if not driver:
-            if status_container: status_container.warning("Booting Stealth Browser... Please wait.")
-            try:
-                driver = setup_stealth_browser()
-                driver.get("https://x.com/robots.txt") 
-                driver.add_cookie({'name': 'auth_token', 'value': tw_auth, 'domain': '.x.com', 'path': '/', 'secure': True})
-                driver.add_cookie({'name': 'ct0', 'value': tw_ct0, 'domain': '.x.com', 'path': '/', 'secure': True})
-            except Exception as e:
-                error_trace = traceback.format_exc()
-                if status_container: status_container.error(f"Browser Boot Failed:\n```python\n{error_trace}\n```")
-                return dms_fired, "Failed to start browser."
+            if status_container: status_container.warning("Booting Stealth Browser...")
+            driver = setup_stealth_browser()
+            driver.get("https://x.com/robots.txt") 
+            driver.add_cookie({'name': 'auth_token', 'value': tw_auth, 'domain': '.x.com', 'path': '/', 'secure': True})
+            driver.add_cookie({'name': 'ct0', 'value': tw_ct0, 'domain': '.x.com', 'path': '/', 'secure': True})
 
-        if status_container: status_container.info(f"Browser navigating to @{handle}'s inbox...")
-        
-        # 3. Fire Payload
         try:
-            try_browser_send(driver, handle, message)
-            dms_fired += 1
-            if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "DM Sent")
-            if status_container: status_container.success(f"✅ Browser Success! Delivered to @{handle}.")
+            # FIX: We now include status_container here
+            try_browser_send(driver, handle, message, status_container)
             
-            if dms_fired < max_dms:
-                delay = random.randint(45, 75)
-                if status_container: status_container.write(f"⏳ Sleeping {delay}s...")
-                time.sleep(delay)
-                
+            dms_fired += 1
+            if status_col_name: sheet.update_cell(idx + 2, list(row.keys()).index(status_col_name) + 1, "DM Sent")
+            if status_container: status_container.success(f"✅ Sent to @{handle}.")
+            time.sleep(random.randint(45, 90))
         except Exception as e:
             if status_container: 
-                # This will print the massive diagnostic block we created above
                 st.error(f"🚨 **Execution Failure for @{handle}** 🚨")
                 st.markdown(str(e))
-                
-            if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "DMs Closed / Failed")
             time.sleep(3)
             continue
             
     if driver: driver.quit()
-    return dms_fired, f"Cloud Browser Engine Concluded. Sent {dms_fired} messages."
+    return dms_fired, f"Cycle Concluded. Sent {dms_fired} messages."
