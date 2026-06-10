@@ -62,6 +62,24 @@ def check_password():
 if not check_password():
     st.stop()
 
+def trigger_local_worker(tunnel_url, auth_token, ct0, max_dms):
+    """Sends the execution payload to your local Mac."""
+    try:
+        endpoint = f"{tunnel_url.rstrip('/')}/dispatch"
+        payload = {
+            "max_dms": max_dms,
+            "sheet_tab": "Twitter Leads",
+            "auth_token": auth_token,
+            "ct0": ct0
+        }
+        response = requests.post(endpoint, json=payload, timeout=10)
+        if response.status_code == 200:
+            st.success("✅ Trigger sent to local worker! Check your terminal.")
+        else:
+            st.error(f"❌ Trigger failed: {response.text}")
+    except Exception as e:
+        st.error(f"❌ Tunnel unreachable. Check your SSH command. Error: {str(e)}")
+
 # ==========================================
 # 🚀 CORE APPLICATION & CUSTOM UI
 # ==========================================
@@ -873,37 +891,22 @@ elif menu == "⚙️ Control Room":
             # 🐦 CLOUD TWITTER DM ENGINE
             # ==========================================
             with st.container(border=True):
-                st.subheader("🐦 Cloud Twitter DM Autopilot")
-                st.write("Fires highly targeted, lowercase technical DMs via Twikit API directly from the cloud.")
-                
-                with st.expander("🔑 Verify Twitter Cookies"):
-                    tw_auth = st.text_input("auth_token", value=st.secrets.get("twitter", {}).get("auth_token", ""), type="password")
-                    tw_ct0 = st.text_input("ct0", value=st.secrets.get("twitter", {}).get("ct0", ""), type="password")
-                
-                tw_mode = st.radio("Twitter Generation Mode", ["🧠 Elite AI (Lowercase/Casual)", "✍️ Custom Template"], horizontal=True, key="tw_radio")
-                
-                tw_custom_msg = ""
-                if tw_mode == "✍️ Custom Template":
-                    st.info("Variables you can use: `{name}`, `{bio}`")
-                    tw_custom_msg = st.text_area("DM Content", "Hey @{name}, saw you're building in the agent space...", height=100)
-                
-                max_dms_input = st.slider("Max DMs to send this batch", 1, 20, 5, key="twitter_cap")
+             st.subheader("🐦 Cloud-to-Local Twitter DM Bridge")
+             st.write("Trigger your local execution node via secure tunnel.")
+    
+             col_t1, col_t2 = st.columns(2)
+             with col_t1:
+                 tunnel_url = st.text_input("Local Tunnel URL (lhr.life)", key="tunnel_url")
+                 max_dms = st.slider("Max DMs to send", 1, 20, 5, key="dm_slider")
+             with col_t2:
+                 ui_auth = st.text_input("Auth Token", type="password", key="ui_auth")
+                 ui_ct0 = st.text_input("CT0", type="password", key="ui_ct0")
 
-                if st.button("📡 Execute Cloud DM Campaign", type="primary", use_container_width=True):
-                    if not tw_auth or not tw_ct0:
-                        st.error("Missing Twitter cookies. Check your secrets.")
-                    else:
-                        with st.spinner("Executing Cloud DM Campaign..."):
-                            import zynd_twitter_dm
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
-                            count, msg = zynd_twitter_dm.dispatch_twitter_dms(
-                                max_dms=max_dms_input,
-                                mode=tw_mode,
-                                custom_msg=tw_custom_msg,
-                                status_container=status_text
-                            )
-                            status_text.success(msg)
+             if st.button("🚀 Trigger Local DM Campaign"):
+                 if not tunnel_url:
+                     st.error("Please enter the Tunnel URL from your terminal.")
+                 else:
+                     trigger_local_worker(tunnel_url, ui_auth, ui_ct0, max_dms)
                                         
         with ai_col2:
             with st.container(border=True):
