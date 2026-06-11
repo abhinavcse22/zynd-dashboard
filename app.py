@@ -287,6 +287,27 @@ else:
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/lightning-bolt.png", width=70)
     st.title("Zynd OS")
+    if st.button("🚨 RUN SUPABASE DIAGNOSTIC"):
+        st.write("Checking secrets...")
+        if "supabase" not in st.secrets:
+            st.error("❌ 'supabase' section not found in Streamlit Secrets. Check your TOML formatting.")
+        else:
+            st.success("✅ Secrets found!")
+            try:
+                from supabase import create_client
+                url = st.secrets["supabase"]["url"]
+                key = st.secrets["supabase"]["key"]
+                client = create_client(url, key)
+                st.success("✅ Supabase Client initialized!")
+                
+                # Test a dummy write
+                test_payload = {"source_tab": "diagnostic_test", "post_url": "https://test.com/123", "raw_data": ["test"]}
+                client.table("zynd_master_leads").upsert(test_payload, on_conflict="post_url").execute()
+                st.success("🔥 SUCCESS! Data successfully written to Supabase Vault.")
+            except ImportError:
+                st.error("❌ ImportError: The 'supabase' package is not installed in the Streamlit container.")
+            except Exception as e:
+                st.error(f"❌ Connection/Write Error: {e}")
     st.caption("v2.0 | Secured Workspace")
     st.markdown("---")
     
