@@ -991,22 +991,21 @@ elif menu == "⚙️ Control Room":
                                 email_mode, custom_subj, custom_msg, email_cap, progress_bar, status_text
                             )
             st.markdown("### 📥 Inbound Intelligence Listener")
+            st.write("Scan your inboxes for replies and let AI automatically classify the intent and update the CRM.")
 
-st.write("Scan your inboxes for replies and let AI automatically classify the intent and update the CRM.")
-
-if st.button("📡 Sweep Inbox & Update CRM"):
-    status_text = st.empty()
+            if st.button("📡 Sweep Inbox & Update CRM"):
+                status_text = st.empty()
     
     # 🛑 THE SECURITY PATCH: Pull credentials from the encrypted vault
-    try:
-        imap_user = st.secrets["imap"]["email"]
-        imap_pass = st.secrets["imap"]["password"]
-    except KeyError:
-        status_text.error("❌ Security Error: IMAP credentials not found in Streamlit Secrets.")
-        st.stop()
+                try:
+                    imap_user = st.secrets["imap"]["email"]
+                    imap_pass = st.secrets["imap"]["password"]
+                except KeyError:
+                    status_text.error("❌ Security Error: IMAP credentials not found in Streamlit Secrets.")
+                    st.stop()
         
-    from zynd_inbound_listener import run_cloud_inbound_sweep
-    run_cloud_inbound_sweep(imap_user, imap_pass, status_text)
+                from zynd_inbound_listener import run_cloud_inbound_sweep
+                run_cloud_inbound_sweep(imap_user, imap_pass, status_text)
 
             # ==========================================
             # 🐦 CLOUD TWITTER DM ENGINE
