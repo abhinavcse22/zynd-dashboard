@@ -308,6 +308,37 @@ with st.sidebar:
                 st.error("❌ ImportError: The 'supabase' package is not installed in the Streamlit container.")
             except Exception as e:
                 st.error(f"❌ Connection/Write Error: {e}")
+                
+    if st.button("🔄 RUN MASTER SUPABASE SYNC"):
+        st.write("Starting legacy data migration...")
+        from zynd_db_manager import safe_append_rows, get_db_connection, SHEET_ID
+        
+        client = get_db_connection()
+        # Mapping the tabs to their unique URL column index for deduplication
+        sync_map = {
+            "Reddit Leads": 5,          
+            "Twitter Leads": 4,         
+            "github_stargazer_leads": 2,
+            "Fork Sniper Leads": 3      
+        }
+        
+        total_synced = 0
+        for tab, url_idx in sync_map.items():
+            try:
+                st.write(f"Syncing {tab}...")
+                worksheet = client.open_by_key(SHEET_ID).worksheet(tab)
+                data = worksheet.get_all_values()
+                
+                if len(data) > 1:
+                    # Skip the header row, push all legacy data into the shadow writer
+                    safe_append_rows(tab, data[1:], unique_url_index=url_idx)
+                    total_synced += len(data[1:])
+                    st.success(f"✅ Synced {len(data[1:])} leads from {tab}.")
+            except Exception as e:
+                st.error(f"❌ Error syncing {tab}: {e}")
+                
+        st.success(f"🎉 MASTER SYNC COMPLETE! {total_synced} total legacy leads securely backed up to Supabase.")
+    
     st.caption("v2.0 | Secured Workspace")
     st.markdown("---")
     
