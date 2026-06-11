@@ -458,6 +458,8 @@ if menu == "📈 Campaign Dashboard":
 # 📈 TAB: PIPELINE OVERVIEW
 # ==========================================
 elif menu == "📈 Pipeline Overview":
+    from zynd_analytics import render_pipeline_overview
+    render_pipeline_overview()
     st.header("Executive GTM Summary")
     m1, m2, m3, m4 = st.columns(4)
     total_leads = len(df_gh) + len(df_rd) + len(df_tw) + len(df_star) + len(df_fork)
