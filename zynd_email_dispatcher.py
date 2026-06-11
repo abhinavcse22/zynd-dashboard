@@ -53,7 +53,7 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
             subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
             body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
         else:
-            # The B2B SaaS Logic
+            # 🛑 THE FIX: We instruct the LLM to output pure JSON.
             prompt = f"""
             You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
             Write a highly effective, professional cold email to a developer named {username}.
@@ -61,33 +61,51 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
             Their bio context: {bio}
             
             Structure the email using this exact B2B sales framework:
-            1. The Hook: Acknowledge their interaction with {signal}. Transition smoothly into a relevant technical challenge they might face.
-            2. The Value: Introduce Zynd. State clearly how it solves that challenge or helps builders like them.
-            3. The Call to Action (CTA): A low-friction ask. (e.g., "Open to a 15-min chat next week?")
+            1. The Hook: Acknowledge their interaction with {signal}. 
+            2. The Value: Introduce Zynd and how it helps them deploy/monetize faster.
+            3. The CTA: A low-friction ask (e.g., "Open to a 15-min chat next week?").
             
             STRICT RULES:
             - Sound like an elite technical founder. Professional, intelligent, but conversational.
             - DO NOT use cheesy marketing words ("synergies", "revolutionary", "delve").
-            - Keep it under 4 short paragraphs.
-            - Sign off as "Best,\nAbhinav". Do NOT use placeholders like [Your Name].
-            - Subject line should read like a quick idea (e.g., "Quick idea regarding [repo]" or "[Name], a faster way to...").
-
-            Format EXACTLY like this:
-            SUBJECT: [your subject line]
-            BODY: [your email body]
+            - Keep it under 4 short paragraphs. Sign off as "Best,\nAbhinav".
+            
+            OUTPUT FORMAT:
+            You must respond ONLY with a valid JSON object containing exactly two keys: "subject" and "body".
+            Do not include markdown blocks, backticks, or conversational text.
+            Example: {{"subject": "Quick idea regarding their repo", "body": "Hi name, \\n\\nBody text here."}}
             """
             
             api_key = st.secrets["openrouter"]["api_key"]
-            resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
-                                 headers={"Authorization": f"Bearer {api_key}"}, 
-                                 json={"model": "openai/gpt-4o-mini", "temperature": 0.4, "messages": [{"role": "user", "content": prompt}]})
-                                 
-            ai_text = resp.json()['choices'][0]['message']['content'].replace("**", "")
-            
-            subj_match = re.search(r'(?i)SUBJECT:\s*([^\n]+)', ai_text)
-            body_match = re.search(r'(?i)BODY:\s*(.*)', ai_text, re.DOTALL)
-            subject = subj_match.group(1).strip() if subj_match else f"Quick idea regarding {signal}"
-            body = body_match.group(1).strip() if body_match else f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
+            try:
+                # 🛑 THE FIX: We use 'response_format' to guarantee JSON schema if the model supports it
+                resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
+                                     headers={"Authorization": f"Bearer {api_key}"}, 
+                                     json={
+                                         "model": "openai/gpt-4o-mini", 
+                                         "temperature": 0.3, 
+                                         "response_format": {"type": "json_object"},
+                                         "messages": [{"role": "user", "content": prompt}]
+                                     }, timeout=15)
+                                     
+                ai_text = resp.json()['choices'][0]['message']['content'].strip()
+                
+                # Strip markdown code blocks just in case the LLM disobeys the pure JSON rule
+                if ai_text.startswith("```json"):
+                    ai_text = ai_text[7:-3].strip()
+                elif ai_text.startswith("```"):
+                    ai_text = ai_text[3:-3].strip()
+                    
+                import json
+                email_data = json.loads(ai_text)
+                
+                subject = email_data.get("subject", f"Quick idea regarding {signal}")
+                body = email_data.get("body", f"Hi {username},\n\nI noticed you were checking out {signal}...\n\nBest,\nAbhinav")
+                
+            except Exception as e:
+                print(f"⚠️ AI Parsing Failed, using fallback. Error: {e}")
+                subject = f"Quick idea regarding {signal}"
+                body = f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
 
         # 3. Fire SMTP with Inbox Rotation
         current_sender = SENDER_ACCOUNTS[account_index % len(SENDER_ACCOUNTS)]
