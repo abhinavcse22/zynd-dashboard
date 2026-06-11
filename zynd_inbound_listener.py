@@ -7,7 +7,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 
-# Targets for CRM updates
 CRM_TABS = ["github_stargazer_leads"]
 
 def classify_intent(subject, body):
@@ -65,29 +64,45 @@ def update_crm_status(client, sender_email, new_status, status_text):
                     current_status = str(row.get(status_col_name, ""))
                     if "Interested" not in current_status:
                         sheet.update_cell(idx + 2, status_col_idx, new_status)
-                        status_text.success(f"✅ Updated {sender_email} to '{new_status}' in {tab}.")
+                        status_text.success(f"✅ Updated {sender_email} to '{new_status}' in CRM.")
                     return True
         except Exception as e:
             pass
             
-    status_text.warning(f"⚠️ {sender_email} not found in CRM. Might be an external reply.")
     return False
 
 def run_cloud_inbound_sweep(imap_user, imap_pass, status_text):
-    """Streamlit-compatible IMAP sweeper."""
-    status_text.info(f"📥 Connecting to inbox for {imap_user}...")
+    """Streamlit-compatible IMAP sweeper with Secure Whitelisting."""
+    status_text.info(f"📥 Booting Inbound Sweep for {imap_user}...")
     
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     g_client = gspread.authorize(creds)
     
+    # 🛡️ THE FIREWALL: Cache all valid leads first
+    status_text.write("🗄️ Building secure whitelist from CRM to ignore non-lead emails...")
+    known_emails = set()
+    for tab in CRM_TABS:
+        try:
+            sheet = g_client.open_by_key('11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A').worksheet(tab)
+            records = sheet.get_all_records()
+            if records:
+                headers = sheet.row_values(1)
+                email_col = next((h for h in headers if "email" in h.lower()), None)
+                if email_col:
+                    for row in records:
+                        val = str(row.get(email_col, "")).strip().lower()
+                        if val: known_emails.add(val)
+        except Exception:
+            pass
+            
+    status_text.write(f"✅ Loaded {len(known_emails)} known leads into memory.")
+
     try:
-        # Defaults to Gmail IMAP settings
         mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
         mail.login(imap_user, imap_pass)
         mail.select("inbox")
         
-        # 🛠️ PATCH 1: Changed "UNREAD" to the official IMAP protocol "UNSEEN"
         status, messages = mail.search(None, "UNSEEN")
         email_ids = messages[0].split()
         
@@ -96,21 +111,33 @@ def run_cloud_inbound_sweep(imap_user, imap_pass, status_text):
             mail.logout()
             return
             
-        status_text.write(f"📬 Found {len(email_ids)} new messages. AI processing started...")
+        status_text.write(f"📬 Found {len(email_ids)} unread messages. Filtering against CRM...")
+        
+        processed_count = 0
         
         for e_id in email_ids:
-            res, msg_data = mail.fetch(e_id, "(RFC822)")
+            # 🛡️ THE PEEK UPGRADE: Reads the email without marking it as "\Seen"
+            res, msg_data = mail.fetch(e_id, "(BODY.PEEK[])")
             for response_part in msg_data:
                 if isinstance(response_part, tuple):
                     msg = email.message_from_bytes(response_part[1])
                     
-                    subject, encoding = decode_header(msg["Subject"])[0]
+                    raw_from = msg.get("From", "")
+                    sender_name, sender_email = email.utils.parseaddr(raw_from)
+                    sender_email = sender_email.lower()
+                    
+                    # 🛑 IF NOT IN CRM, IGNORE IT COMPLETELY
+                    if sender_email not in known_emails:
+                        continue
+                        
+                    # 🎯 If we get here, it's a valid lead! Process it.
+                    processed_count += 1
+                    status_text.write(f"🎯 Target Acquired! AI classifying reply from: {sender_email}")
+                    
+                    subject, encoding = decode_header(msg.get("Subject", ""))[0]
                     if isinstance(subject, bytes):
                         subject = subject.decode(encoding if encoding else "utf-8")
                         
-                    raw_from = msg.get("From")
-                    sender_name, sender_email = email.utils.parseaddr(raw_from)
-                    
                     body = ""
                     if msg.is_multipart():
                         for part in msg.walk():
@@ -122,17 +149,15 @@ def run_cloud_inbound_sweep(imap_user, imap_pass, status_text):
                     else:
                         body = msg.get_payload(decode=True).decode()
                         
-                    status_text.write(f"🧠 Classifying reply from: {sender_email}")
-                    
                     intent = classify_intent(subject, body[:1000])
                     
                     update_crm_status(g_client, sender_email, intent, status_text)
                     
-                    # 🛠️ PATCH 2: Double backslash to clear the Python syntax warning
+                    # Target processed successfully. Mark it as read.
                     mail.store(e_id, '+FLAGS', '\\Seen')
                     
         mail.logout()
-        status_text.success("🏁 Inbound Sweep Complete. CRM Updated.")
+        status_text.success(f"🏁 Sweep Complete. Processed {processed_count} valid lead replies. Ignored other emails.")
         
     except Exception as e:
         status_text.error(f"❌ IMAP Error: {e}")
