@@ -3,13 +3,17 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 import random
+import threading
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
+
+# 🔒 THE FIX: Global Thread Lock. This prevents the 5-thread scraper swarm 
+# from crashing the Google API by forcing concurrent writes into a single-file queue.
+db_lock = threading.Lock()
 
 # --- SAFE SHADOW MODE INITIALIZATION ---
 def get_supabase_client():
     try:
-        # Verify credentials exist in secrets panel first
         if "supabase" in st.secrets and "url" in st.secrets["supabase"]:
             from supabase import create_client
             url: str = st.secrets["supabase"]["url"]
@@ -28,12 +32,12 @@ def get_db_connection():
 def safe_append_rows(tab_name, new_rows, unique_url_index=None):
     """
     Enterprise-grade dual-writer. 
-    Writes to Google Sheets (for UI) AND Supabase (for scale/backup).
+    Thread-safe writing to Google Sheets AND Supabase.
     """
     if not new_rows:
         return True
 
-    # 1. Supabase Shadow Write Execution
+    # 1. Supabase Shadow Write Execution (Non-blocking)
     supabase = get_supabase_client()
     if supabase:
         try:
@@ -45,29 +49,34 @@ def safe_append_rows(tab_name, new_rows, unique_url_index=None):
                     "post_url": post_url,
                     "raw_data": row
                 })
-            
-            # Upsert handles duplicate rejection instantly at the engine layer
             supabase.table("zynd_master_leads").upsert(payload, on_conflict="post_url").execute()
             print(f"✅ [SUPABASE DATA LAKE] Backed up {len(new_rows)} leads.")
         except Exception as e:
             print(f"⚠️ [SUPABASE FAILED] Continuing safely to Google Sheets: {e}")
 
-    # 2. Google Sheets Backup Legacy Routing
-    try:
-        client = get_db_connection()
-        worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
-    except Exception as e:
-        st.error(f"Database Mapping Error: Could not locate worksheet grid. {e}")
-        return False
-        
-    for attempt in range(3):
+    # 2. Google Sheets Backup Legacy Routing (Thread-Safe)
+    with db_lock: # 🚦 TRAFFIC CONTROL: Only one thread enters this block at a time
         try:
-            worksheet.append_rows(new_rows)
-            print(f"✅ [GOOGLE SHEETS] Logged {len(new_rows)} rows to table partition.")
-            return True
-        except gspread.exceptions.APIError as e:
-            print(f"🚨 [RATE LIMIT REACHED] Retrying write in backend pipeline... {e}")
-            time.sleep((2 ** attempt) + random.uniform(0, 1))
+            client = get_db_connection()
+            worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
+        except Exception as e:
+            st.error(f"Database Mapping Error: Could not locate worksheet grid. {e}")
+            return False
+            
+        for attempt in range(5): # Increased from 3 to 5 for heavy batch processing
+            try:
+                worksheet.append_rows(new_rows)
+                print(f"✅ [GOOGLE SHEETS] Logged {len(new_rows)} rows to {tab_name}.")
+                return True
+            except gspread.exceptions.APIError as e:
+                if attempt == 4:
+                    print(f"🚨 [FATAL WRITE ERROR] Max retries hit for {tab_name}. Data dropped. {e}")
+                    return False
+                
+                # Smart exponential backoff: 2s, 4s, 8s, 16s + jitter
+                delay = (2 ** attempt) + random.uniform(1.0, 3.0)
+                print(f"🚦 [RATE LIMIT REACHED] Thread paused. Retrying in {delay:.1f}s...")
+                time.sleep(delay)
 
     return False
 
