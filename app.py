@@ -211,11 +211,12 @@ def load_full_database():
     return gh, rd, tw, star, fork, tele, inf, issue, disc, direc, hack, contrib, li
 
 def clean_database():
-    """Enterprise-grade background sweeper that cleans all operational tabs."""
+    """Enterprise-grade, zero-data-loss database cleaner."""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     client = gspread.authorize(creds)
     total_removed = 0
+    import time
     
     cleaning_map = {
         "GitHub Leads": "Project URL",
@@ -245,12 +246,24 @@ def clean_database():
             after_count = len(df)
 
             if before_count > after_count:
+                # 🛑 THE FIX: Zero Data-Loss Overwrite
                 payload = [df.columns.values.tolist()] + df.values.tolist()
-                worksheet.clear()
-                worksheet.update(payload)
+                
+                # 1. Overwrite the top rows safely (NO clear() command used)
+                worksheet.update(values=payload, range_name="A1")
+                
+                # 2. Trim ONLY the excess dangling rows at the bottom
+                start_row_to_delete = after_count + 2
+                end_row_to_delete = before_count + 1
+                
+                if start_row_to_delete <= end_row_to_delete:
+                    worksheet.delete_rows(start_row_to_delete, end_row_to_delete)
+                    
                 total_removed += (before_count - after_count)
+                time.sleep(1) # Pacing to protect Google API limits
                 
         except Exception as e:
+            print(f"⚠️ Clean DB Warning on {tab_name}: {e}")
             continue
 
     return total_removed
