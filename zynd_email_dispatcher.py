@@ -69,7 +69,7 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
             subject = custom_subj.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
             body = custom_msg.replace("{name}", username).replace("{repo}", signal).replace("{bio}", bio)
         else:
-            # 🛑 THE FIX: We instruct the LLM to output pure JSON.
+            # 🛑 THE FIX: Aggressively force unique subject lines and remove the lazy examples.
             prompt = f"""
             You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
             Write a highly effective cold email to a developer named {username}.
@@ -83,33 +83,30 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
             
             STRICT RULES:
             - Sound like an elite technical founder. Professional but conversational.
-            - DO NOT use cheesy marketing words ("synergies", "opportunities", "revolutionary").
-            - THE SUBJECT LINE: Must be ultra-casual, short (under 6 words), and reference their repo. Use lowercase to make it look human. 
-            - NEVER use "Exploring Opportunities", "Partnership", or formal titles. 
-            - Good Subject Examples: "quick question about {signal}", "your work on {signal}", "idea regarding your github repo".
-            - Keep the body under 4 short paragraphs. Sign off as "Best,\nAbhinav".
+            - THE SUBJECT LINE MUST BE UNIQUE FOR EVERY EMAIL.
+            - Keep the subject ultra-casual, under 6 words, and entirely lowercase.
+            - Reference {username} or {signal} in the subject so they know it is not automated.
+            - CRITICAL: DO NOT copy the example structure text. Invent a brand new subject.
             
             OUTPUT FORMAT:
             You must respond ONLY with a valid JSON object containing exactly two keys: "subject" and "body".
-            Do not include markdown blocks, backticks, or conversational text.
-            Example: {{"subject": "quick question about your repo", "body": "Hi name, \\n\\nBody text here."}}
+            Example Structure (DO NOT COPY THIS TEXT, INVENT YOUR OWN):
+            {{"subject": "<insert unique casual subject here>", "body": "Hi name, \\n\\nBody text here."}}
             """
             
             api_key = st.secrets["openrouter"]["api_key"]
             try:
-                # 🛑 THE FIX: We use 'response_format' to guarantee JSON schema if the model supports it
                 resp = requests.post("https://openrouter.ai/api/v1/chat/completions", 
                                      headers={"Authorization": f"Bearer {api_key}"}, 
                                      json={
                                          "model": "openai/gpt-4o-mini", 
-                                         "temperature": 0.3, 
+                                         "temperature": 0.6, # Increased temperature makes the AI more creative
                                          "response_format": {"type": "json_object"},
                                          "messages": [{"role": "user", "content": prompt}]
                                      }, timeout=15)
                                      
                 ai_text = resp.json()['choices'][0]['message']['content'].strip()
                 
-                # Strip markdown code blocks just in case the LLM disobeys the pure JSON rule
                 if ai_text.startswith("```json"):
                     ai_text = ai_text[7:-3].strip()
                 elif ai_text.startswith("```"):
@@ -118,8 +115,14 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
                 import json
                 email_data = json.loads(ai_text)
                 
-                subject = email_data.get("subject", f"Quick idea regarding {signal}")
+                # Removed the hardcoded fallback string so we get the pure AI output
+                subject = email_data.get("subject", f"question about {signal}")
                 body = email_data.get("body", f"Hi {username},\n\nI noticed you were checking out {signal}...\n\nBest,\nAbhinav")
+                
+            except Exception as e:
+                print(f"⚠️ AI Parsing Failed. Error: {e}")
+                subject = f"regarding {signal}"
+                body = f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
                 
             except Exception as e:
                 print(f"⚠️ AI Parsing Failed, using fallback. Error: {e}")
