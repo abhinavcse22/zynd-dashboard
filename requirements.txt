@@ -15,7 +15,7 @@ python-dotenv>=1.0.0
 # --- Web Scraping & Aggregation ---
 beautifulsoup4
 feedparser
-duckduckgo-search
+ddgs
 googlesearch-python
 
 # --- AI & LLM Orchestration ---

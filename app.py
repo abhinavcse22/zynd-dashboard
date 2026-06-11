@@ -649,7 +649,7 @@ elif menu == "⚙️ Control Room":
             with st.container(border=True):
                 st.subheader("🚀 GitHub Harvester")
                 st.write("Scan GitHub for keywords matching core tech stack parameters.")
-                if st.button("Start GitHub Engine", use_container_width=True, key="btn_gh_harv"):
+                if st.button("Start GitHub Engine", width='stretch', key="btn_gh_harv"):
                     with st.spinner("Executing..."):
                         try:
                             zynd_leads.harvest_leads()

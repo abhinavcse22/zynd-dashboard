@@ -4,7 +4,7 @@ from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 import re
 import random
 import requests
