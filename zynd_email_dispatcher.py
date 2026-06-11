@@ -72,7 +72,7 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
             # 🛑 THE FIX: We instruct the LLM to output pure JSON.
             prompt = f"""
             You are Abhinav, a technical founder building Zynd (an OS and discovery network for AI agents).
-            Write a highly effective, professional cold email to a developer named {username}.
+            Write a highly effective cold email to a developer named {username}.
             They recently interacted with this GitHub repository: {signal}.
             Their bio context: {bio}
             
@@ -82,14 +82,17 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
             3. The CTA: A low-friction ask (e.g., "Open to a 15-min chat next week?").
             
             STRICT RULES:
-            - Sound like an elite technical founder. Professional, intelligent, but conversational.
-            - DO NOT use cheesy marketing words ("synergies", "revolutionary", "delve").
-            - Keep it under 4 short paragraphs. Sign off as "Best,\nAbhinav".
+            - Sound like an elite technical founder. Professional but conversational.
+            - DO NOT use cheesy marketing words ("synergies", "opportunities", "revolutionary").
+            - THE SUBJECT LINE: Must be ultra-casual, short (under 6 words), and reference their repo. Use lowercase to make it look human. 
+            - NEVER use "Exploring Opportunities", "Partnership", or formal titles. 
+            - Good Subject Examples: "quick question about {signal}", "your work on {signal}", "idea regarding your github repo".
+            - Keep the body under 4 short paragraphs. Sign off as "Best,\nAbhinav".
             
             OUTPUT FORMAT:
             You must respond ONLY with a valid JSON object containing exactly two keys: "subject" and "body".
             Do not include markdown blocks, backticks, or conversational text.
-            Example: {{"subject": "Quick idea regarding their repo", "body": "Hi name, \\n\\nBody text here."}}
+            Example: {{"subject": "quick question about your repo", "body": "Hi name, \\n\\nBody text here."}}
             """
             
             api_key = st.secrets["openrouter"]["api_key"]
