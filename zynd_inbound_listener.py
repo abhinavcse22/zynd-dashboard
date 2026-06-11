@@ -87,7 +87,8 @@ def run_cloud_inbound_sweep(imap_user, imap_pass, status_text):
         mail.login(imap_user, imap_pass)
         mail.select("inbox")
         
-        status, messages = mail.search(None, "UNREAD")
+        # 🛠️ PATCH 1: Changed "UNREAD" to the official IMAP protocol "UNSEEN"
+        status, messages = mail.search(None, "UNSEEN")
         email_ids = messages[0].split()
         
         if not email_ids:
@@ -127,8 +128,8 @@ def run_cloud_inbound_sweep(imap_user, imap_pass, status_text):
                     
                     update_crm_status(g_client, sender_email, intent, status_text)
                     
-                    # Mark as read so it isn't processed again
-                    mail.store(e_id, '+FLAGS', '\Seen')
+                    # 🛠️ PATCH 2: Double backslash to clear the Python syntax warning
+                    mail.store(e_id, '+FLAGS', '\\Seen')
                     
         mail.logout()
         status_text.success("🏁 Inbound Sweep Complete. CRM Updated.")
