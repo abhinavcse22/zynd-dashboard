@@ -308,7 +308,7 @@ with st.sidebar:
                 st.error("❌ ImportError: The 'supabase' package is not installed in the Streamlit container.")
             except Exception as e:
                 st.error(f"❌ Connection/Write Error: {e}")
-                
+
     if st.button("🔄 RUN MASTER SUPABASE SYNC"):
         st.write("Starting legacy data migration...")
         from zynd_db_manager import safe_append_rows, get_db_connection, SHEET_ID
@@ -990,6 +990,23 @@ elif menu == "⚙️ Control Room":
                                 user_smtp_host, user_smtp_port, user_smtp_user, user_smtp_pass, 
                                 email_mode, custom_subj, custom_msg, email_cap, progress_bar, status_text
                             )
+            st.markdown("### 📥 Inbound Intelligence Listener")
+
+st.write("Scan your inboxes for replies and let AI automatically classify the intent and update the CRM.")
+
+if st.button("📡 Sweep Inbox & Update CRM"):
+    status_text = st.empty()
+    
+    # 🛑 THE SECURITY PATCH: Pull credentials from the encrypted vault
+    try:
+        imap_user = st.secrets["imap"]["email"]
+        imap_pass = st.secrets["imap"]["password"]
+    except KeyError:
+        status_text.error("❌ Security Error: IMAP credentials not found in Streamlit Secrets.")
+        st.stop()
+        
+    from zynd_inbound_listener import run_cloud_inbound_sweep
+    run_cloud_inbound_sweep(imap_user, imap_pass, status_text)
 
             # ==========================================
             # 🐦 CLOUD TWITTER DM ENGINE
