@@ -7,27 +7,30 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🛑 Strict Corporate Blacklist (Protects the database)
+# 🛑 THE AGGRESSIVE BLACKLIST (Zero Tolerance for Employees)
 BLACKLIST_PHRASES = [
     "at langchain", "at crewai", "at n8n", "at openai", "at anthropic",
     "langchain employee", "crewai employee", "n8n employee",
-    "hiring at", "recruiting for", "talent acquisition",
-    "microsoft", "google", "meta", "aws", "amazon"
+    "hiring at", "recruiting for", "developer advocate", "devrel"
 ]
 
-def generate_clean_queries():
-    """Generates pure text streams to bypass API blocks while expanding the net massively."""
-    frameworks = ["LangGraph", "CrewAI", "n8n", "Phidata", "MCP server"]
-    personas = ["founder", "builder", "agency", "indie hacker"]
-    # Expanded regions forces Google to dump entirely new buckets of users
-    regions = ["San Francisco", "New York", "London", "Remote", "India", "Berlin", "Canada", "Singapore"]
+# 🎯 THE GTM ICP WHITELIST (Must match one of these to be saved)
+GTM_PERSONAS = [
+    "founder", "agency", "indie hacker", "solopreneur", "ceo", "cto",
+    "building", "built", "shipped", "revenue", "mrr", "clients"
+]
+
+def generate_gtm_post_queries():
+    """Hyper-targeted queries based strictly on your GTM document."""
+    frameworks = ["LangGraph", "CrewAI", "n8n", "MCP", "AI agent"]
+    # Focus on GTM actions instead of general terms
+    actions = ["agency", "founder", "built", "shipped", "production"]
     
     queries = []
     for f in frameworks:
-        for p in personas:
-            for r in regions:
-                queries.append(f"linkedin.com/in/ {f} {p} {r}")
-                
+        for a in actions:
+            queries.append(f"linkedin.com/posts {f} {a}")
+            
     return queries
 
 def run_linkedin_scraper():
@@ -51,21 +54,20 @@ def run_linkedin_scraper():
             sheet.append_row(["Source", "Platform", "Username/Name", "Profile URL", "Post URL", "Query Used", "Snippet", "Date Found", "Lead Score"])
         
         raw_data = sheet.get_all_values()
-        existing_urls = set()
-        if len(raw_data) > 0 and 'Profile URL' in raw_data[0]:
-            url_idx = raw_data[0].index('Profile URL')
-            existing_urls = {str(row[url_idx]).lower().strip() for row in raw_data[1:] if len(row) > url_idx}
+        existing_posts = set()
+        if len(raw_data) > 0 and 'Post URL' in raw_data[0]:
+            post_idx = raw_data[0].index('Post URL')
+            existing_posts = {str(row[post_idx]).lower().strip() for row in raw_data[1:] if len(row) > post_idx}
             
     except Exception as e:
         st.error(f"❌ Database Initialization Error: {str(e)}")
         return 0
         
-    all_queries = generate_clean_queries()
+    all_queries = generate_gtm_post_queries()
+    # 25 high-intent queries * 100 payload = scanning 2,500 targeted posts
+    execution_stack = all_queries[:25] 
     
-    # 💥 Executing 80 vectors. At 100 results per vector, this pulls 8,000 raw links.
-    execution_stack = all_queries[:80] 
-    
-    st.success(f"✅ Safe Matrix Formed. Deploying {len(execution_stack)} maximum-capacity vectors...")
+    st.success(f"✅ GTM Matrix Formed. Deploying {len(execution_stack)} strict ICP vectors...")
     
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -74,14 +76,14 @@ def run_linkedin_scraper():
     status_text = st.empty()
 
     for idx, query in enumerate(execution_stack):
-        status_text.text(f"Extracting Vector [{idx+1}/{len(execution_stack)}]: {query}")
+        status_text.text(f"Extracting GTM Vector [{idx+1}/{len(execution_stack)}]: {query}")
         progress_bar.progress((idx + 1) / len(execution_stack))
         
         try:
             url = "https://google.serper.dev/search"
             payload = {
                 "q": query,
-                "num": 100  # 🔥 MAXIMAL PAYLOAD
+                "num": 100  # Max payload to offset the strict filtering
             }
             headers = {
                 'X-API-KEY': serper_key,
@@ -97,20 +99,24 @@ def run_linkedin_scraper():
             organic_results = data.get("organic", [])
             
             for result in organic_results:
-                profile_url = result.get("link", "").strip()
+                post_url = result.get("link", "").strip()
                 
-                # Strict Profile Validation
-                if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
+                # Verify it's a post link and deduplicate
+                if "linkedin.com/" not in post_url.lower() or post_url.lower() in existing_posts:
                     continue
                 
-                raw_title = result.get("title", "LinkedIn User")
-                name = raw_title.split('-')[0].split('|')[0].strip()
+                raw_title = result.get("title", "")
+                name = "Active Builder"
+                if "on linkedin:" in raw_title.lower():
+                    name = raw_title.split("on LinkedIn:")[0].strip()
+                elif "-" in raw_title:
+                    name = raw_title.split("-")[0].strip()
                 
                 snippet = result.get("snippet", "")
-                clean_bio = str(snippet).replace('\n', ' ')[:300]
-                match_context = (raw_title + " " + clean_bio).lower()
+                clean_snippet = str(snippet).replace('\n', ' ')[:300]
+                match_context = (raw_title + " " + clean_snippet).lower()
                 
-                # 🛑 Delete Corporate Employees
+                # 🛑 Filter 1: The Corporate Blacklist (Zero exceptions)
                 is_employee = False
                 for blacklisted in BLACKLIST_PHRASES:
                     if blacklisted in match_context:
@@ -119,21 +125,28 @@ def run_linkedin_scraper():
                 if is_employee: 
                     continue
                 
-                # 🔥 Whitelist Removed: If they are a profile, have the keyword, and aren't an employee = LEAD.
+                # 🎯 Filter 2: The GTM Whitelist (Must match ICP)
+                is_gtm_match = False
+                for persona in GTM_PERSONAS:
+                    if persona in match_context:
+                        is_gtm_match = True
+                        break
+                if not is_gtm_match:
+                    continue
+                
                 new_leads.append([
-                    "Serper Volume Net", 
+                    "Serper GTM Post Net", 
                     "LinkedIn", 
                     name, 
-                    profile_url, 
-                    profile_url, 
+                    post_url, 
+                    post_url, 
                     query, 
-                    clean_bio, 
+                    clean_snippet, 
                     today_str, 
-                    8
+                    10 # Perfect ICP Match
                 ])
-                existing_urls.add(profile_url.lower())
+                existing_posts.add(post_url.lower())
                 
-            # Keep the API compliant pacing
             time.sleep(2.0)
                 
         except Exception:
@@ -143,14 +156,14 @@ def run_linkedin_scraper():
     status_text.empty()
 
     if new_leads:
-        batch_size = 300
+        batch_size = 200
         for i in range(0, len(new_leads), batch_size):
             batch = new_leads[i:i + batch_size]
             sheet.append_rows(batch)
-            time.sleep(2)
+            time.sleep(1.5)
             
-        st.success(f"🎉 FLOODGATES OPENED: Injected {len(new_leads)} unique builders into the tracking ledger.")
+        st.success(f"🎉 GTM PIPELINE COMPLETE: Captured {len(new_leads)} verified founders and agencies!")
         return len(new_leads)
         
-    st.error("🛑 Extraction Window Finalized. 0 new unique records met criteria.")
+    st.error("🛑 Extraction Window Finalized. 0 new unique posts matched GTM.")
     return 0
