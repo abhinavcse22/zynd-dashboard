@@ -34,3 +34,7 @@ telethon
 
 # --- Cloud Outbound Social Engines (Fixed & Cleaned) ---
 git+https://github.com/d60/twikit.git@main
+
+# --- Core Networking (Pinned to prevent build timeouts) ---
+httpcore>=1.0.0
+httpx>=0.25.0
