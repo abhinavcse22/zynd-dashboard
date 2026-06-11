@@ -1004,7 +1004,6 @@ elif menu == "⚙️ Control Room":
                             progress_bar = st.progress(0)
                             status_text = st.empty()
                             zynd_email_dispatcher.run_cloud_email_campaign(
-                                user_smtp_host, user_smtp_port, user_smtp_user, user_smtp_pass, 
                                 email_mode, custom_subj, custom_msg, email_cap, progress_bar, status_text
                             )
             st.markdown("### 📥 Inbound Intelligence Listener")

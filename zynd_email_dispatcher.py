@@ -10,16 +10,22 @@ from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 
 # ==========================================
-# 🛡️ THE INBOX ROTATION VAULT
+# 🛡️ THE ENCRYPTED INBOX ROTATION VAULT
 # ==========================================
-# Add your Gmail App Passwords here for now. 
-# You can add as many accounts as you want; the system will rotate through them evenly.
-SENDER_ACCOUNTS = [
-    {"email": "your_email@gmail.com", "password": "your-app-password", "host": "smtp.gmail.com", "port": 587},
-    # {"email": "hello@yourdomain.com", "password": "sendpilot-password", "host": "smtp.sendpilot.io", "port": 587},
-]
+def get_secure_sender_accounts():
+    """Pulls the email credentials securely from Streamlit Secrets."""
+    accounts = []
+    if "smtp" in st.secrets:
+        # Loop through account1, account2, etc., in the secrets vault
+        for key in st.secrets["smtp"]:
+            accounts.append(dict(st.secrets["smtp"][key]))
+            
+    if not accounts:
+        st.error("❌ Security Error: No SMTP accounts found in Streamlit Secrets under [smtp].")
+        st.stop()
+        
+    return accounts
 
-# Note: I removed the single smtp inputs from the function arguments since the vault handles it now.
 def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_bar, status_text):
     # 1. Connect to DB
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -30,6 +36,9 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
     records = sheet.get_all_records()
     headers = sheet.row_values(1)
     status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
+
+    # 🛑 SECURITY FIX: Load the secure accounts from the vault dynamically
+    SENDER_ACCOUNTS = get_secure_sender_accounts()
 
     emails_fired = 0
     account_index = 0  # 🔄 Tracks which inbox is currently sending
