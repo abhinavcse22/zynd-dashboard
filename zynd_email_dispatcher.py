@@ -125,10 +125,12 @@ def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_
 
         # 3. Fire SMTP with Inbox Rotation
         current_sender = SENDER_ACCOUNTS[account_index % len(SENDER_ACCOUNTS)]
-        smtp_user = current_sender["email"]
-        smtp_pass = current_sender["password"]
-        smtp_host = current_sender["host"]
-        smtp_port = current_sender["port"]
+        
+        # 🛑 THE FIX: Use .get() to provide safe defaults and prevent KeyErrors
+        smtp_user = current_sender.get("email", "")
+        smtp_pass = current_sender.get("password", "")
+        smtp_host = current_sender.get("host", "smtp.gmail.com")  # Defaults to Gmail if missing
+        smtp_port = current_sender.get("port", 587)               # Defaults to 587 if missing
 
         try:
             msg = MIMEMultipart()
