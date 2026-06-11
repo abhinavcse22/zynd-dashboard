@@ -266,6 +266,8 @@ def run_stargazer_radar(target_repos, max_repos, max_stargazers, min_score, dry_
                 
         df_final = df_final[cols].fillna("")
         sheet.append_rows(df_final.values.tolist()) 
+        from zynd_db_manager import safe_append_rows
+        safe_append_rows("github_stargazer_leads", df_final.values.tolist(), unique_url_index=2)
         return len(df_final)
     
     return len(final_data) if dry_run else 0

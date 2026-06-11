@@ -94,6 +94,8 @@ def run_fork_sniper(target_repo, max_results=20):
     
     if new_rows_to_add:
         sheet.append_rows(new_rows_to_add)
+        from zynd_db_manager import safe_append_rows
+        safe_append_rows("Fork Sniper Leads", new_rows_to_add, unique_url_index=3)
         
     # Return the data as a list of dictionaries so the Streamlit dashboard can still draw the table
     display_data = []

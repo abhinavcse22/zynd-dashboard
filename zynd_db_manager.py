@@ -6,47 +6,76 @@ import random
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
+# --- SAFE SHADOW MODE INITIALIZATION ---
+def get_supabase_client():
+    try:
+        # Verify credentials exist in secrets panel first
+        if "supabase" in st.secrets and "url" in st.secrets["supabase"]:
+            from supabase import create_client
+            url: str = st.secrets["supabase"]["url"]
+            key: str = st.secrets["supabase"]["key"]
+            return create_client(url, key)
+    except Exception as e:
+        print(f"ℹ️ [SHADOW MODE] Supabase connection bypassed: {e}")
+    return None
+
 def get_db_connection():
     """Establishes a secure connection to Google Sheets."""
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
     return gspread.authorize(creds)
 
-def safe_append_rows(tab_name, new_rows, max_retries=3):
+def safe_append_rows(tab_name, new_rows, unique_url_index=None):
     """
-    Enterprise-grade database writer with Exponential Backoff.
-    If Google API rate-limits us, it waits and tries again instead of crashing.
+    Enterprise-grade dual-writer. 
+    Writes to Google Sheets (for UI) AND Supabase (for scale/backup).
     """
     if not new_rows:
         return True
 
-    client = get_db_connection()
-    worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
-    
-    for attempt in range(max_retries):
+    # 1. Supabase Shadow Write Execution
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            payload = []
+            for row in new_rows:
+                post_url = str(row[unique_url_index]) if unique_url_index is not None and len(row) > unique_url_index else None
+                payload.append({
+                    "source_tab": tab_name,
+                    "post_url": post_url,
+                    "raw_data": row
+                })
+            
+            # Upsert handles duplicate rejection instantly at the engine layer
+            supabase.table("zynd_master_leads").upsert(payload, on_conflict="post_url").execute()
+            print(f"✅ [SUPABASE DATA LAKE] Backed up {len(new_rows)} leads.")
+        except Exception as e:
+            print(f"⚠️ [SUPABASE FAILED] Continuing safely to Google Sheets: {e}")
+
+    # 2. Google Sheets Backup Legacy Routing
+    try:
+        client = get_db_connection()
+        worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
+    except Exception as e:
+        st.error(f"Database Mapping Error: Could not locate worksheet grid. {e}")
+        return False
+        
+    for attempt in range(3):
         try:
             worksheet.append_rows(new_rows)
+            print(f"✅ [GOOGLE SHEETS] Logged {len(new_rows)} rows to table partition.")
             return True
         except gspread.exceptions.APIError as e:
-            if attempt == max_retries - 1:
-                st.error(f"Database write failed after {max_retries} attempts: {e}")
-                return False
-            # Exponential backoff: Wait 2s, then 4s, then 8s + random jitter
-            sleep_time = (2 ** attempt) + random.uniform(0, 1)
-            time.sleep(sleep_time)
-            
+            print(f"🚨 [RATE LIMIT REACHED] Retrying write in backend pipeline... {e}")
+            time.sleep((2 ** attempt) + random.uniform(0, 1))
+
     return False
 
 def get_existing_identifiers(tab_name, column_index=1):
-    """
-    Optimized deduplication reader.
-    Instead of downloading the entire 22,000 row database, it ONLY downloads
-    the specific column (e.g., Usernames) to check for duplicates, saving 90% bandwidth.
-    """
+    """Optimized deduplication reader."""
     client = get_db_connection()
     worksheet = client.open_by_key(SHEET_ID).worksheet(tab_name)
     try:
-        # col_values is much faster and lighter than get_all_values()
         return set(worksheet.col_values(column_index)[1:]) 
     except Exception:
         return set()

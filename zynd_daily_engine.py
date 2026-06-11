@@ -125,6 +125,8 @@ def run_reddit_scraper():
     print("="*60)
 
     if new_leads:
-        sheet.append_rows(new_leads)
-        return len(new_leads)
-    return 0
+        print(f"\n⬆️ Uploading {len(new_leads)} new leads to Data Layer!")
+        from zynd_db_manager import safe_append_rows
+        # For Reddit, the post_url is at index 5
+        safe_append_rows("Reddit Leads", new_leads, unique_url_index=5)
+    return len(new_leads)

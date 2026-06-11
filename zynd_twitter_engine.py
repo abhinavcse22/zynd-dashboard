@@ -158,6 +158,8 @@ def run_twitter_scraper():
     print("="*50)
 
     if new_leads:
-        sheet.append_rows(new_leads)
-        return len(new_leads)
-    return 0
+        print(f"\n⬆️ Uploading {len(new_leads)} new Twitter leads to Data Layer!")
+        from zynd_db_manager import safe_append_rows
+        # For Twitter, the post_url is at index 4
+        safe_append_rows("Twitter Leads", new_leads, unique_url_index=4)
+    return len(new_leads)
