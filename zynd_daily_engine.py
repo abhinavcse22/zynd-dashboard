@@ -1,4 +1,3 @@
-import requests
 import time
 import json
 from datetime import datetime
@@ -6,6 +5,8 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import re
+import feedparser
+import requests
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
@@ -30,24 +31,18 @@ def ai_qualify_post(text):
         if response.status_code == 200:
             raw_content = response.json()['choices'][0]['message']['content']
             print(f"   [🤖 AI Raw Output]: {raw_content.strip()}")
-            
-            # Unbreakable JSON extraction
             match = re.search(r'\{.*?\}', raw_content, re.DOTALL)
             if match:
                 data = json.loads(match.group(0))
-                # Map 'is_builder' to 'is_agent_builder' for compatibility
                 return {"is_agent_builder": data.get("is_builder", True), "score": data.get("score", 6)}
-        else:
-            print(f"   [⚠️ AI API Error]: Status {response.status_code}")
     except Exception as e:
         print(f"   [⚠️ AI Exception]: {e}")
         
-    print("   [🔄 Defaulting to True to prevent data loss]")
     return {"is_agent_builder": True, "score": 5}
 
 def run_reddit_scraper():
     print("\n" + "="*50)
-    print("🚀 STARTING REDDIT X-RAY ENGINE")
+    print("🚀 STARTING REDDIT X-RAY ENGINE (RSS GHOST ROUTE)")
     print("="*50)
     
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -61,61 +56,62 @@ def run_reddit_scraper():
         url_idx = raw_data[0].index('Post URL')
         existing_urls = {str(row[url_idx]) for row in raw_data[1:] if len(row) > url_idx and row[url_idx]}
 
-    print(f"📊 Found {len(existing_urls)} existing leads in database. Preventing duplicates.")
-
     subreddits = ['LangChain', 'crewAI', 'AutoGPT', 'LocalLLaMA', 'artificial']
     pain_keywords = ['error', 'stuck', 'help', 'alternative', 'frustrated', 'issue', 'bug', 'fail', 'agent']
     
     new_leads = []
     
     for sub in subreddits:
-        print(f"\n📡 [SCANNING SUBREDDIT]: r/{sub}")
+        print(f"\n📡 [SCANNING RSS FEED]: r/{sub}")
         try:
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-            response = requests.get(f"https://www.reddit.com/r/{sub}/new.json?limit=15", headers=headers)
+            # Bypass 403 using Reddit's RSS Syndication Feed
+            feed_url = f"https://www.reddit.com/r/{sub}/new.rss"
+            feed = feedparser.parse(feed_url)
             
-            if response.status_code == 200:
-                posts = response.json().get('data', {}).get('children', [])
-                print(f"   📥 Pulled {len(posts)} recent posts from Reddit API.")
+            if not feed.entries:
+                print(f"   ⚠️ RSS Feed empty or blocked for r/{sub}.")
+                continue
                 
-                for post in posts:
-                    data = post['data']
-                    title = data.get('title', '')
-                    text = data.get('selftext', '')
-                    author = data.get('author', 'Unknown')
-                    post_url = f"https://www.reddit.com{data.get('permalink', '')}"
+            print(f"   📥 Pulled {len(feed.entries)} recent posts via RSS.")
+            
+            for entry in feed.entries[:15]:
+                title = entry.title
+                text = entry.get('summary', '')
+                post_url = entry.link
+                # RSS authors look like '/u/username'
+                author = entry.get('author', 'Unknown').replace('/u/', '')
+                
+                if post_url in existing_urls: 
+                    continue 
                     
-                    if post_url in existing_urls: 
-                        continue # Silent skip for duplicates
-                        
-                    combined_text = f"{title} {text}".lower()
-                    has_pain = any(word in combined_text for word in pain_keywords)
+                combined_text = f"{title} {text}".lower()
+                has_pain = any(word in combined_text for word in pain_keywords)
+                
+                if not has_pain: 
+                    continue 
+                
+                print(f"   ✅ [STAGE 1 PASS]: Keywords found -> '{title[:40]}...'")
+                print(f"   🧠 Sending to AI for verification...")
+                
+                ai_eval = ai_qualify_post(combined_text[:600])
+                
+                if not ai_eval.get("is_agent_builder", False):
+                    print("   ❌ [STAGE 2 FAIL]: AI rejected.")
+                    continue
                     
-                    if not has_pain: 
-                        print(f"   ❌ [STAGE 1 FAIL]: No keywords found in '{title[:40]}...'")
-                        continue 
-                    
-                    print(f"   ✅ [STAGE 1 PASS]: Keywords found -> '{title[:40]}...'")
-                    print(f"   🧠 Sending to AI for verification...")
-                    
-                    ai_eval = ai_qualify_post(combined_text[:600])
-                    
-                    if not ai_eval.get("is_agent_builder", False):
-                        print("   ❌ [STAGE 2 FAIL]: AI determined this is not a builder.")
-                        continue
-                        
-                    print("   🔥 [STAGE 2 PASS]: AI APPROVED! Lead Captured.")
-                    score = ai_eval.get("score", 6)
-                    date_str = datetime.now().strftime('%Y-%m-%d')
-                    
-                    new_leads.append([
-                        "Reddit Smart Filter", f"r/{sub}", f"u/{author}", title, 
-                        text.replace('\n', ' ')[:500], post_url, date_str, score                    
-                    ])
-                    existing_urls.add(post_url)
-                    time.sleep(1) 
-            else:
-                print(f"   ⚠️ Reddit blocked request with HTTP {response.status_code}")
+                print("   🔥 [STAGE 2 PASS]: AI APPROVED! Lead Captured.")
+                score = ai_eval.get("score", 6)
+                date_str = datetime.now().strftime('%Y-%m-%d')
+                
+                # Strip HTML tags from RSS summary
+                clean_text = re.sub('<[^<]+>', '', text)[:500].replace('\n', ' ')
+                
+                new_leads.append([
+                    "Reddit RSS + AI Filter", f"r/{sub}", f"u/{author}", title, 
+                    clean_text, post_url, date_str, score                    
+                ])
+                existing_urls.add(post_url)
+                time.sleep(1) 
                 
         except Exception as e:
             print(f"   🚨 Critical Error on r/{sub}: {e}")

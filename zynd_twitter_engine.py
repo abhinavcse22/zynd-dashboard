@@ -4,14 +4,13 @@ from datetime import datetime
 import gspread
 import streamlit as st
 from oauth2client.service_account import ServiceAccountCredentials
-from ddgs import DDGS
+from googlesearch import search
 import re
 import random
 import requests
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# Simplified queries. DuckDuckGo often fails on complex Boolean operators.
 TWITTER_QUERIES = [
     'site:x.com "AI agent" building',
     'site:x.com "LangGraph" error',
@@ -40,13 +39,10 @@ def ai_qualify_post(text):
         if response.status_code == 200:
             raw_content = response.json()['choices'][0]['message']['content']
             print(f"      [🤖 AI Raw Output]: {raw_content.strip()}")
-            
             match = re.search(r'\{.*?\}', raw_content, re.DOTALL)
             if match:
                 data = json.loads(match.group(0))
                 return {"is_agent_builder": data.get("is_builder", True), "score": data.get("score", 6)}
-        else:
-            print(f"      [⚠️ AI API Error]: Status {response.status_code}")
     except Exception as e:
         print(f"      [⚠️ AI Exception]: {e}")
         
@@ -54,7 +50,7 @@ def ai_qualify_post(text):
 
 def run_twitter_scraper():
     print("\n" + "="*50)
-    print("🚀 STARTING TWITTER/X X-RAY ENGINE")
+    print("🚀 STARTING TWITTER/X X-RAY ENGINE (GOOGLE ROUTE)")
     print("="*50)
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -74,16 +70,16 @@ def run_twitter_scraper():
     print(f"📊 Found {len(existing_urls)} existing leads in database.")
     ignored_routes = ['search', 'hashtag', 'home', 'explore', 'i', 'messages', 'status']
     new_leads = []
-    ddgs = DDGS()
     
     for query in TWITTER_QUERIES:
-        print(f"\n📡 [SEARCHING DUCKDUCKGO]: {query}")
+        print(f"\n📡 [SEARCHING GOOGLE]: {query}")
         try:
-            results = list(ddgs.text(query, max_results=15))
-            print(f"   📥 DDG returned {len(results)} raw web results.")
+            # Using Google Search's advanced mode to pull the Tweet snippet directly from the search index
+            results = list(search(query, num_results=10, advanced=True, sleep_interval=2))
+            print(f"   📥 Google returned {len(results)} raw web results.")
             
             for result in results:
-                post_url = result.get('href', '')
+                post_url = result.url
                 post_url_lower = post_url.lower()
                 
                 if not post_url or post_url_lower in existing_urls:
@@ -97,7 +93,7 @@ def run_twitter_scraper():
                 if username.lower() in ignored_routes:
                     continue
                 
-                clean_text = str(result.get('body', '')).replace('\n', ' ')[:500]
+                clean_text = str(result.description).replace('\n', ' ')[:500]
                 print(f"\n   👀 Target Found: @{username}")
                 print(f"   📝 Snippet: {clean_text[:60]}...")
                 print(f"   🧠 Sending to AI for verification...")
@@ -113,7 +109,7 @@ def run_twitter_scraper():
                 date_str = datetime.now().strftime('%Y-%m-%d')
                 
                 new_leads.append([
-                    "Twitter Smart Filter", "Twitter", f"@{username}", 
+                    "Google-X Smart Filter", "Twitter", f"@{username}", 
                     f"https://x.com/{username}", post_url, query, 
                     clean_text, date_str, score
                 ])
@@ -121,13 +117,11 @@ def run_twitter_scraper():
                 time.sleep(1) 
         
         except Exception as e:
-            print(f"   🚨 Critical Error on DDG Search: {e}")
-            if "402" in str(e) or "ratelimit" in str(e).lower():
-                print("   🛑 Rate limited by DDG. Stopping sweeps.")
+            print(f"   🚨 Critical Error on Google Search: {e}")
+            if "429" in str(e):
+                print("   🛑 Rate limited by Google. Stopping sweeps.")
                 break
             continue
-            
-        time.sleep(random.uniform(3.0, 5.0)) 
 
     if new_leads:
         print(f"\n⬆️ Uploading {len(new_leads)} new Twitter leads to Google Sheets!")
