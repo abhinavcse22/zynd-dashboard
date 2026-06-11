@@ -7,27 +7,25 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🎯 Free-Tier Friendly Raw Queries (Broad terms to maximize return payload size)
+# 🔥 Highly Targeted Raw Queries
+# By putting "founder", "agency", and "builder" directly in the query, 
+# Google is forced to return your exact ICP in the top 50 results.
 SERPER_DORKS = [
-    'linkedin.com/in LangGraph',
-    'linkedin.com/in CrewAI',
-    'linkedin.com/in n8n workflow',
-    'linkedin.com/in AI automation agency',
-    'linkedin.com/in building AI agents',
-    'linkedin.com/in MCP server',
-    'linkedin.com/in LangChain agent'
+    'linkedin.com/in LangGraph founder',
+    'linkedin.com/in LangGraph builder',
+    'linkedin.com/in LangGraph indie hacker',
+    'linkedin.com/in CrewAI founder',
+    'linkedin.com/in CrewAI agency',
+    'linkedin.com/in n8n automation founder',
+    'linkedin.com/in building AI agents founder',
+    'linkedin.com/in MCP server builder'
 ]
 
 # 🛑 Employee Blacklist: Only block people employed by the core software providers
 BLACKLIST_PHRASES = [
     "at langchain", "at crewai", "at n8n", "at openai", "at anthropic",
-    "langchain employee", "crewai employee", "n8n employee"
-]
-
-# 🎯 Founder/Builder Whitelist: Python forces matches to fit your exact cohort personas
-WHITELIST_WORDS = [
-    "founder", "co-founder", "ceo", "cto", "owner", "indie", "hacker", 
-    "agency", "freelancer", "solopreneur", "builder", "creator", "stealth"
+    "langchain employee", "crewai employee", "n8n employee", 
+    "software engineer at", "working at"
 ]
 
 def run_linkedin_scraper():
@@ -60,17 +58,17 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Auth Error: {str(e)}")
         return 0
         
-    st.success("✅ Secure. Booting Target Matching Pipeline...")
+    st.success("✅ Secure. Booting Targeted Founder Pipeline...")
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
 
     for query in SERPER_DORKS:
-        st.text(f"↳ Gathering Raw Payload: {query}")
+        st.text(f"↳ Gathering Payload: {query}")
         try:
             url = "https://google.serper.dev/search"
             payload = {
                 "q": query,
-                "num": 50  # 🔥 Maximizing pull capacity to 50 results per query block!
+                "num": 50  # 🔥 Pulling up to 50 targeted results per query
             }
             headers = {
                 'X-API-KEY': serper_key,
@@ -101,7 +99,7 @@ def run_linkedin_scraper():
                 snippet = result.get("snippet", "")
                 clean_bio = str(snippet).replace('\n', ' ')[:300]
                 
-                # Normalize context strings for deep filtering
+                # Normalize context strings for filtering
                 match_context = (raw_title + " " + clean_bio).lower()
                 
                 # 🛑 Filter 1: Check Employee Blacklist
@@ -110,20 +108,12 @@ def run_linkedin_scraper():
                     if blacklisted in match_context:
                         is_employee = True
                         break
+                        
                 if is_employee:
-                    continue  # Skip corporate platform staff
-                
-                # 🎯 Filter 2: Enforce Target Whitelist (Isolates founders/builders)
-                is_target_persona = False
-                for word in WHITELIST_WORDS:
-                    if word in match_context:
-                        is_target_persona = True
-                        break
-                if not is_target_persona:
-                    continue  # Skip users who are not founders or active builders
+                    continue  # Skip corporate platform staff!
                 
                 new_leads.append([
-                    "Serper Free Engine", 
+                    "Serper Pro Engine", 
                     "LinkedIn", 
                     name, 
                     profile_url, 
@@ -131,10 +121,10 @@ def run_linkedin_scraper():
                     query, 
                     clean_bio, 
                     today_str, 
-                    9  # Premium lead score matching monetization sprint metrics
+                    9 
                 ])
                 existing_urls.add(profile_url.lower())
-                st.text(f"    ↳ ✅ Sniped Target Founder: {name}")
+                st.text(f"    ↳ ✅ Sniped Target: {name}")
                 
             time.sleep(1.0)
                 
@@ -142,7 +132,7 @@ def run_linkedin_scraper():
             st.warning(f"⚠️ Search Error: {str(e)}")
 
     if new_leads:
-        st.success(f"I/O Update: Uploading {len(new_leads)} highly-targeted founders to Database...")
+        st.success(f"⬆️ Uploading {len(new_leads)} highly-targeted founders to Database...")
         sheet.append_rows(new_leads)
         return len(new_leads)
         
