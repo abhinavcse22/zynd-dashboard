@@ -7,39 +7,27 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🛑 Corporate Exclusions (Processed strictly in Python to save API compliance)
+# 🛑 Strict Corporate Blacklist (Protects the database)
 BLACKLIST_PHRASES = [
     "at langchain", "at crewai", "at n8n", "at openai", "at anthropic",
     "langchain employee", "crewai employee", "n8n employee",
-    "hiring at", "recruiting for", "talent acquisition", "human resources",
+    "hiring at", "recruiting for", "talent acquisition",
     "microsoft", "google", "meta", "aws", "amazon"
 ]
 
-# 🎯 ICP Inclusions (Processed strictly in Python to bypass the API paywall)
-WHITELIST_WORDS = [
-    "founder", "co-founder", "ceo", "cto", "owner", "indie", "hacker", 
-    "agency", "solopreneur", "builder", "creator", "stealth", "consultant",
-    "freelancer", "partner"
-]
-
 def generate_clean_queries():
-    """Generates pure, operator-free text streams acceptable by Serper Free Tier."""
+    """Generates pure text streams to bypass API blocks while expanding the net massively."""
     frameworks = ["LangGraph", "CrewAI", "n8n", "Phidata", "MCP server"]
-    personas = ["founder", "builder", "agency", "indie"]
-    regions = ["US", "UK", "Remote", "Europe", "India", "Canada", "APAC"]
+    personas = ["founder", "builder", "agency", "indie hacker"]
+    # Expanded regions forces Google to dump entirely new buckets of users
+    regions = ["San Francisco", "New York", "London", "Remote", "India", "Berlin", "Canada", "Singapore"]
     
     queries = []
-    # Core structural string generation
     for f in frameworks:
         for p in personas:
             for r in regions:
-                queries.append(f"linkedin.com/in {f} {p} {r}")
+                queries.append(f"linkedin.com/in/ {f} {p} {r}")
                 
-    # Add high-intent action variations
-    for f in frameworks:
-        queries.append(f"linkedin.com/in built with {f}")
-        queries.append(f"linkedin.com/in developed using {f}")
-        
     return queries
 
 def run_linkedin_scraper():
@@ -72,13 +60,12 @@ def run_linkedin_scraper():
         st.error(f"❌ Database Initialization Error: {str(e)}")
         return 0
         
-    # Generate the sequential query stack
     all_queries = generate_clean_queries()
     
-    # Cap total execution per run to keep processing times responsive (~3-4 minutes)
-    execution_stack = all_queries[:60] 
+    # 💥 Executing 80 vectors. At 100 results per vector, this pulls 8,000 raw links.
+    execution_stack = all_queries[:80] 
     
-    st.success(f"✅ Safe Matrix Formed. Deploying {len(execution_stack)} execution vectors sequentially...")
+    st.success(f"✅ Safe Matrix Formed. Deploying {len(execution_stack)} maximum-capacity vectors...")
     
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -87,14 +74,14 @@ def run_linkedin_scraper():
     status_text = st.empty()
 
     for idx, query in enumerate(execution_stack):
-        status_text.text(f"Processing Vector [{idx+1}/{len(execution_stack)}]: {query}")
+        status_text.text(f"Extracting Vector [{idx+1}/{len(execution_stack)}]: {query}")
         progress_bar.progress((idx + 1) / len(execution_stack))
         
         try:
             url = "https://google.serper.dev/search"
             payload = {
                 "q": query,
-                "num": 40  # Balanced payload density for clean parsing
+                "num": 100  # 🔥 MAXIMAL PAYLOAD
             }
             headers = {
                 'X-API-KEY': serper_key,
@@ -112,7 +99,7 @@ def run_linkedin_scraper():
             for result in organic_results:
                 profile_url = result.get("link", "").strip()
                 
-                # Strict LinkedIn Profile Verification and Local Deduplication
+                # Strict Profile Validation
                 if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                 
@@ -123,7 +110,7 @@ def run_linkedin_scraper():
                 clean_bio = str(snippet).replace('\n', ' ')[:300]
                 match_context = (raw_title + " " + clean_bio).lower()
                 
-                # 🛑 Client-Side Filter 1: Drop Corporate Employees
+                # 🛑 Delete Corporate Employees
                 is_employee = False
                 for blacklisted in BLACKLIST_PHRASES:
                     if blacklisted in match_context:
@@ -132,17 +119,9 @@ def run_linkedin_scraper():
                 if is_employee: 
                     continue
                 
-                # 🎯 Client-Side Filter 2: Verify Builder/Founder Status
-                is_target = False
-                for word in WHITELIST_WORDS:
-                    if word in match_context:
-                        is_target = True
-                        break
-                if not is_target:
-                    continue
-                
+                # 🔥 Whitelist Removed: If they are a profile, have the keyword, and aren't an employee = LEAD.
                 new_leads.append([
-                    "Serper Free Matrix", 
+                    "Serper Volume Net", 
                     "LinkedIn", 
                     name, 
                     profile_url, 
@@ -150,12 +129,12 @@ def run_linkedin_scraper():
                     query, 
                     clean_bio, 
                     today_str, 
-                    9
+                    8
                 ])
                 existing_urls.add(profile_url.lower())
                 
-            # 🛡️ Mandatory Pacing Delay: Prevents hitting the 40 requests/min free tier cap
-            time.sleep(2.5)
+            # Keep the API compliant pacing
+            time.sleep(2.0)
                 
         except Exception:
             continue
@@ -163,15 +142,14 @@ def run_linkedin_scraper():
     progress_bar.empty()
     status_text.empty()
 
-    # --- ATOMIC BATCH RECORD ENTRY ---
     if new_leads:
-        batch_size = 200
+        batch_size = 300
         for i in range(0, len(new_leads), batch_size):
             batch = new_leads[i:i + batch_size]
             sheet.append_rows(batch)
-            time.sleep(1.5)
+            time.sleep(2)
             
-        st.success(f"🎉 Pipeline Complete! Injected {len(new_leads)} unique builders into the tracking ledger.")
+        st.success(f"🎉 FLOODGATES OPENED: Injected {len(new_leads)} unique builders into the tracking ledger.")
         return len(new_leads)
         
     st.error("🛑 Extraction Window Finalized. 0 new unique records met criteria.")
