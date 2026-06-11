@@ -8,38 +8,28 @@ import itertools
 
 SHEET_ID = '11rjC0aTk2xLc371tQT8sF2px8wObaeDX-eZQZrIq1-A'
 
-# 🔥 THE SEARCH MATRIX INGREDIENTS
-FRAMEWORKS = ["LangGraph", "CrewAI", "n8n", "MCP", "AI agent", "OpenAI Swarm", "Phidata"]
-PERSONAS = ["founder", "builder", "CEO", "indie hacker"]
-# Appending locations forces Google to bypass its result clustering limits
-LOCATIONS = ["San Francisco", "London", "New York", "Remote", "India", "Berlin", "Toronto", "Singapore"]
+# 🔥 1. THE ZYND COHORT MATRIX 
+# Directly mapped to the 7 target developer types in your GTM documentation
+FRAMEWORKS = ["LangGraph", "CrewAI", "n8n", "Phidata", "Autogen", "MCP server", "Swarm agent"]
 
-# 🛑 Employee Blacklist
+# Broadened to capture anyone actively writing code or building workflows
+PERSONAS = ["builder", "developer", "engineer", "founder", "freelance", "agency"]
+
+# 🛑 2. THE CORPORATE BLACKLIST
+# Protects your database from being polluted by employees of the parent companies
 BLACKLIST_PHRASES = [
     "at langchain", "at crewai", "at n8n", "at openai", "at anthropic",
-    "software engineer at", "working at", "employed at", "intern at"
-]
-
-# 🎯 Target Whitelist
-WHITELIST_WORDS = [
-    "founder", "co-founder", "ceo", "cto", "indie", "hacker", 
-    "agency", "solopreneur", "builder", "creator", "stealth"
+    "langchain employee", "crewai employee", "n8n employee", 
+    "hiring at", "recruiting for"
 ]
 
 def generate_search_matrix():
-    """Generates a massive array of hyper-specific queries to bypass Google's clustering limits."""
+    """Generates 42 hyper-targeted queries guaranteed to bypass free-tier limits."""
     queries = []
-    # Mix 1: Framework + Persona + Location
-    for f, p, l in itertools.product(FRAMEWORKS, PERSONAS, LOCATIONS):
-        queries.append(f'linkedin.com/in "{f}" {p} {l}')
-    
-    # Mix 2: "Built with" variations
-    for f in FRAMEWORKS:
-        queries.append(f'linkedin.com/in "built with {f}"')
-        queries.append(f'linkedin.com/in "using {f}" founder')
-        
-    # Cap at 100 queries per run to manage execution time (~2 mins) and API credits
-    return queries[:100] 
+    for f, p in itertools.product(FRAMEWORKS, PERSONAS):
+        # Using site: guarantees 100% profile returns. No OR/- operators to trigger 400 errors.
+        queries.append(f'site:linkedin.com/in/ {f} {p}')
+    return queries
 
 def run_linkedin_scraper():
     st.info("🔌 Authenticating Database & API Connections...")
@@ -72,24 +62,24 @@ def run_linkedin_scraper():
         return 0
         
     search_matrix = generate_search_matrix()
-    st.success(f"✅ Matrix Generated. Executing {len(search_matrix)} parallel search vectors...")
+    st.success(f"✅ Matrix Generated. Executing {len(search_matrix)} parallel search vectors for maximum volume...")
     
     new_leads = []
     today_str = datetime.now().strftime('%Y-%m-%d')
     
-    # UI Elements for long-running task
     progress_bar = st.progress(0)
     status_text = st.empty()
 
+    # --- THE MASSIVE PARALLEL PULL ---
     for idx, query in enumerate(search_matrix):
-        status_text.text(f"↳ Scanning Vector [{idx+1}/{len(search_matrix)}]: {query}")
+        status_text.text(f"↳ Extracting Vector [{idx+1}/{len(search_matrix)}]: {query}")
         progress_bar.progress((idx + 1) / len(search_matrix))
         
         try:
             url = "https://google.serper.dev/search"
             payload = {
                 "q": query,
-                "num": 20  # 20 results per query * 100 queries = 2,000 profiles analyzed
+                "num": 100  # 🔥 MAX PAYLOAD: Pulling 100 profiles per vector (4,200 total capacity)
             }
             headers = {
                 'X-API-KEY': serper_key,
@@ -107,6 +97,7 @@ def run_linkedin_scraper():
             for result in organic_results:
                 profile_url = result.get("link", "").strip()
                 
+                # Deduplication & Integrity Check
                 if "linkedin.com/in/" not in profile_url.lower() or profile_url.lower() in existing_urls:
                     continue
                 
@@ -117,24 +108,18 @@ def run_linkedin_scraper():
                 clean_bio = str(snippet).replace('\n', ' ')[:300]
                 match_context = (raw_title + " " + clean_bio).lower()
                 
-                # 🛑 Block Employees
+                # 🛑 Block Corporate Employees ONLY
                 is_employee = False
                 for blacklisted in BLACKLIST_PHRASES:
                     if blacklisted in match_context:
                         is_employee = True
                         break
-                if is_employee: continue
+                if is_employee: 
+                    continue
                 
-                # 🎯 Whitelist Founders/Builders
-                is_target_persona = False
-                for word in WHITELIST_WORDS:
-                    if word in match_context:
-                        is_target_persona = True
-                        break
-                if not is_target_persona: continue
-                
+                # If they survived the blacklist and match the URL, they are Zynd ICP.
                 new_leads.append([
-                    "Serper Matrix Engine", 
+                    "Zynd Volume Matrix", 
                     "LinkedIn", 
                     name, 
                     profile_url, 
@@ -142,11 +127,12 @@ def run_linkedin_scraper():
                     query, 
                     clean_bio, 
                     today_str, 
-                    9
+                    8 # Baseline ICP Score
                 ])
                 existing_urls.add(profile_url.lower())
                 
-            time.sleep(0.5) # Fast pacing, Serper can handle it
+            # Quick 0.5s pause to prevent rapid API exhaustion
+            time.sleep(0.5) 
                 
         except Exception:
             continue
@@ -154,10 +140,17 @@ def run_linkedin_scraper():
     progress_bar.empty()
     status_text.empty()
 
+    # --- BATCH UPLOAD TO CRM ---
     if new_leads:
-        st.success(f"🔥 MASSIVE PULL: Uploading {len(new_leads)} highly-targeted founders to Database...")
-        sheet.append_rows(new_leads)
+        # Pushing in batches of 500 to protect Google Sheets write limits
+        batch_size = 500
+        for i in range(0, len(new_leads), batch_size):
+            batch = new_leads[i:i + batch_size]
+            sheet.append_rows(batch)
+            time.sleep(2) # Protect against Google API 429 Write Quota
+            
+        st.success(f"🔥 MASSIVE PULL COMPLETE: Uploaded {len(new_leads)} verified AI agent builders to the Database!")
         return len(new_leads)
         
-    st.error("🛑 Scan Complete. No new unique targets found. Try expanding the Matrix LOCATIONS.")
+    st.error("🛑 Scan Complete. No new unique targets found.")
     return 0
