@@ -16,10 +16,17 @@ def get_secure_sender_accounts():
     """Pulls the email credentials securely from Streamlit Secrets."""
     accounts = []
     if "smtp" in st.secrets:
-        # Loop through account1, account2, etc., in the secrets vault
-        for key in st.secrets["smtp"]:
-            accounts.append(dict(st.secrets["smtp"][key]))
-            
+        smtp_data = st.secrets["smtp"]
+        
+        # 🧠 THE FIX: Smart Detection
+        # If "email" is directly inside [smtp], it's a single account.
+        if "email" in smtp_data:
+            accounts.append(dict(smtp_data))
+        else:
+            # Otherwise, they are using [smtp.account1], [smtp.account2], etc.
+            for key in smtp_data:
+                accounts.append(dict(smtp_data[key]))
+                
     if not accounts:
         st.error("❌ Security Error: No SMTP accounts found in Streamlit Secrets under [smtp].")
         st.stop()
