@@ -64,28 +64,43 @@ if not check_password():
     st.stop()
 
 def trigger_local_worker(tunnel_url, auth_token, ct0, max_dms):
-    """Sends the execution payload to your local Mac."""
+    """Sends the authenticated execution payload to your local Mac worker."""
     try:
-        # Use the /dispatch endpoint
         endpoint = f"{tunnel_url.rstrip('/')}/dispatch"
         
-        # This matches the DispatchPayload class in mac_worker.py
+        # 🛑 SECURITY FIX: Pull the signature from the encrypted vault
+        try:
+            local_signature = st.secrets["security"]["local_node_secret"]
+        except KeyError:
+            st.error("❌ Security Error: 'local_node_secret' not found in Streamlit Secrets.")
+            return
+            
+        headers = {
+            "X-Zynd-Signature": local_signature,
+            "Content-Type": "application/json"
+        }
+        
         payload = {
             "max_dms": max_dms,
-            "sheet_tab": "Twitter Leads", # Make sure this matches your sheet
+            "sheet_tab": "Twitter Leads",
             "auth_token": auth_token,
             "ct0": ct0
         }
         
-        response = requests.post(endpoint, json=payload, timeout=10)
+        # We use a 12-second timeout to prevent the UI from hanging
+        response = requests.post(endpoint, json=payload, headers=headers, timeout=12)
         
         if response.status_code == 200:
-            st.success("✅ Trigger sent! Check your local terminal.")
+            st.success("🔥 Campaign accepted by Local Node! SQLite job ID registered.")
+        elif response.status_code == 403:
+            st.error("❌ Handshake Refused: The security signature did not match your Mac Worker.")
         else:
-            st.error(f"❌ Trigger failed (Status {response.status_code}): {response.text}")
+            st.error(f"❌ Tunnel routing error (Status {response.status_code}): {response.text}")
             
+    except requests.exceptions.Timeout:
+        st.error("❌ Request timed out. Ensure your Mac is awake and the ngrok/lhr tunnel is running.")
     except Exception as e:
-        st.error(f"❌ Tunnel unreachable. Ensure your Mac is running. Error: {str(e)}")
+        st.error(f"❌ Tunnel routing interface unreachable: {str(e)}")
 
 # ==========================================
 # 🚀 CORE APPLICATION & CUSTOM UI
