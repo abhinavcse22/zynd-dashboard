@@ -1,16 +1,10 @@
 import requests
 import json
 import streamlit as st
-import time
 
 def generate_outreach_sequence(lead_name, intent_source, bio_or_post, product_pitch="an OS and network for AI agents and Web3 builders"):
-    """
-    Advanced Dynamic Outreach Sequencer.
-    Maintains 100% backward compatibility with app.py while introducing 
-    multi-model fallback routing and auto-retry mechanics to guarantee uptime.
-    """
+    """Generates a highly technical outreach sequence using OpenRouter. Fault-tolerant."""
     
-    # Core prompt formula structured for maximum conversion context
     prompt = f"""
     You are a technical founder doing elite developer outreach for 'Zynd', {product_pitch}.
     
@@ -34,63 +28,46 @@ def generate_outreach_sequence(lead_name, intent_source, bio_or_post, product_pi
     [Content]
     """
 
-    # Dynamic model hierarchy: if the primary free model rate-limits or fails, the engine auto-escalates
-    model_stack = [
-        "openrouter/free",              # Primary Free Tier Router
-        "meta-llama/llama-3-8b-instruct:free", # High-speed backup A
-        "mistralai/mistral-7b-instruct:free"   # High-speed backup B
-    ]
-    
     try:
-        api_key = st.secrets["openrouter"]["api_key"]
-    except KeyError:
-        return "Configuration Error: 'api_key' missing under [openrouter] section in Streamlit Secrets."
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": "https://zynd.io", 
-        "X-Title": "Zynd OS Advanced", 
-        "Content-Type": "application/json"
-    }
-
-    # Execute structured fallback loops
-    for model in model_stack:
-        retries = 2
-        while retries > 0:
-            try:
-                response = requests.post(
-                    url="https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    data=json.dumps({
-                        "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3
-                    }),
-                    timeout=10 # Aggressive timeout to trigger fallback quickly if stuck
-                )
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {st.secrets['openrouter']['api_key']}",
+                "HTTP-Referer": "https://zynd.io", 
+                "X-Title": "Zynd OS", 
+                "Content-Type": "application/json"
+            },
+            data=json.dumps({
+                "model": "openrouter/free", # Recommended: upgrade to anthropic/llama models for prod
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            }),
+            timeout=15 # Prevent infinite hanging if the LLM provider stalls
+        )
+        
+        # 🛑 FIX: Check status code BEFORE attempting to parse JSON
+        if response.status_code != 200:
+            return f"API Error ({response.status_code}): The AI provider is currently unreachable or rate-limited."
+            
+        # 🛑 FIX: Safe JSON parsing
+        try:
+            response_data = response.json()
+            # Safe dict traversal
+            choices = response_data.get('choices', [])
+            if not choices:
+                return "API Error: The AI returned an empty response. Please try again."
                 
-                # If hit with a transient rate limit (429) or server issue (5xx), wait and retry
-                if response.status_code in [429, 500, 502, 503, 504]:
-                    retries -= 1
-                    time.sleep(2)
-                    continue
-                    
-                if response.status_code == 200:
-                    response_data = response.json()
-                    choices = response_data.get('choices', [])
-                    if choices:
-                        content = choices[0].get('message', {}).get('content', '').strip()
-                        if content:
-                            return content
-                            
-                # If status code is an explicit rejection (like 401), break out of this model's loop
-                break
+            content = choices[0].get('message', {}).get('content', '')
+            if not content:
+                return "API Error: The AI model failed to generate text."
                 
-            except requests.exceptions.RequestException:
-                retries -= 1
-                time.sleep(1)
-                
-        # If the code reaches here, the current model failed. It loops to the next backup in the stack.
-        continue
-
-    return "System Degradation Notice: All primary and fallback AI models are currently unresponsive or rate-limited. Please try again in a few moments."
+            return content
+            
+        except ValueError:
+            return "API Error: Received a malformed response from the AI provider."
+            
+    except requests.exceptions.Timeout:
+        return "Timeout Error: The AI took too long to respond. Please try again."
+    except Exception as e:
+        return f"System Error: {str(e)}"
