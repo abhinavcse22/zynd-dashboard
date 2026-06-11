@@ -4,11 +4,23 @@ from email.mime.multipart import MIMEMultipart
 import re
 import requests
 import time
+import random
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import streamlit as st
 
-def run_cloud_email_campaign(smtp_host, smtp_port, smtp_user, smtp_pass, mode, custom_subj, custom_msg, email_cap, progress_bar, status_text):
+# ==========================================
+# 🛡️ THE INBOX ROTATION VAULT
+# ==========================================
+# Add your Gmail App Passwords here for now. 
+# You can add as many accounts as you want; the system will rotate through them evenly.
+SENDER_ACCOUNTS = [
+    {"email": "your_email@gmail.com", "password": "your-app-password", "host": "smtp.gmail.com", "port": 587},
+    # {"email": "hello@yourdomain.com", "password": "sendpilot-password", "host": "smtp.sendpilot.io", "port": 587},
+]
+
+# Note: I removed the single smtp inputs from the function arguments since the vault handles it now.
+def run_cloud_email_campaign(mode, custom_subj, custom_msg, email_cap, progress_bar, status_text):
     # 1. Connect to DB
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
@@ -20,6 +32,7 @@ def run_cloud_email_campaign(smtp_host, smtp_port, smtp_user, smtp_pass, mode, c
     status_col_idx = headers.index("outreach_status") + 1 if "outreach_status" in headers else None
 
     emails_fired = 0
+    account_index = 0  # 🔄 Tracks which inbox is currently sending
 
     for idx, row in enumerate(records):
         if emails_fired >= email_cap: break
@@ -76,7 +89,13 @@ def run_cloud_email_campaign(smtp_host, smtp_port, smtp_user, smtp_pass, mode, c
             subject = subj_match.group(1).strip() if subj_match else f"Quick idea regarding {signal}"
             body = body_match.group(1).strip() if body_match else f"Hi {username},\n\nI noticed you were checking out {signal}. It got me thinking about how you are handling agent discovery right now.\n\nAt Zynd, we're building an OS that helps developers deploy and monetize their agents faster. I'd love to share the approach with you.\n\nOpen to a 15-min chat next week?\n\nBest,\nAbhinav"
 
-        # 3. Fire SMTP
+        # 3. Fire SMTP with Inbox Rotation
+        current_sender = SENDER_ACCOUNTS[account_index % len(SENDER_ACCOUNTS)]
+        smtp_user = current_sender["email"]
+        smtp_pass = current_sender["password"]
+        smtp_host = current_sender["host"]
+        smtp_port = current_sender["port"]
+
         try:
             msg = MIMEMultipart()
             msg['From'] = smtp_user
@@ -91,14 +110,18 @@ def run_cloud_email_campaign(smtp_host, smtp_port, smtp_user, smtp_pass, mode, c
             server.quit()
             
             emails_fired += 1
+            account_index += 1 # 🔄 Move to the next inbox for the next email
+            
             progress_bar.progress(int((emails_fired / email_cap) * 100))
             if status_col_idx: sheet.update_cell(idx + 2, status_col_idx, "Message 1 Sent")
             
             if emails_fired < email_cap:
-                status_text.write(f"✅ Sent to {prospect_email}. Sleeping 10s to avoid spam filters...")
-                time.sleep(10)
+                # 🛡️ THE JITTER UPGRADE: Exact 10s intervals trigger spam traps.
+                delay = random.randint(15, 35)
+                status_text.write(f"✅ Sent to {prospect_email} via {smtp_user}. Sleeping {delay}s to evade spam filters...")
+                time.sleep(delay)
                 
         except Exception as e:
-            st.error(f"Failed to send to {prospect_email}: {e}")
+            st.error(f"Failed to send to {prospect_email} via {smtp_user}: {e}")
 
-    status_text.success(f"🏁 Campaign Complete! {emails_fired} emails sent successfully.")
+    status_text.success(f"🏁 Campaign Complete! {emails_fired} emails sent successfully across {len(SENDER_ACCOUNTS)} inboxes.")
