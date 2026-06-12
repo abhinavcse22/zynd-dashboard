@@ -1071,6 +1071,26 @@ elif menu == "⚙️ Control Room":
                             seq = zynd_ai_drafter.generate_outreach_sequence(lead_n, lead_intent, lead_context)
                             st.code(seq, language="markdown")
 
+            with st.container(border=True):
+                st.subheader("💰 Repo-to-Revenue Auditor")
+                st.write("Generate a personalized GTM and pricing audit from any GitHub URL to use as a high-converting lead magnet.")
+                
+                audit_repo = st.text_input("Target Repository", placeholder="langchain-ai/langgraph")
+                
+                if st.button("Generate Technical Audit 🚀", use_container_width=True):
+                    if audit_repo:
+                        with st.spinner("Analyzing codebase and formulating GTM strategy..."):
+                            import zynd_repo_auditor
+                            success, result = zynd_repo_auditor.generate_repo_revenue_audit(audit_repo)
+                            
+                            if success:
+                                st.success("Audit Generated! Copy and send this to the developer.")
+                                st.markdown(result)
+                            else:
+                                st.error(result)
+                    else:
+                        st.warning("Please enter a repository path.")
+
         st.markdown("### 🎙️ The Zynd Media Empire Content Hub")
         with st.container(border=True):
             media_t1, media_t2, media_t3, media_t4 = st.tabs(["🚀 Market Hijacker", "🧑‍💻 Build in Public", "⚙️ Auto Git-to-Social", "⚔️ Competitor Radar"])
