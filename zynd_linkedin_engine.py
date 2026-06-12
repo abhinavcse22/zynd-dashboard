@@ -156,10 +156,11 @@ def run_linkedin_scraper():
     status_text.empty()
 
     if new_leads:
+        from zynd_db_manager import safe_append_rows
         batch_size = 200
         for i in range(0, len(new_leads), batch_size):
             batch = new_leads[i:i + batch_size]
-            sheet.append_rows(batch)
+            safe_append_rows("LinkedIn Leads", batch, unique_url_index=4)
             time.sleep(1.5)
             
         st.success(f"🎉 GTM PIPELINE COMPLETE: Captured {len(new_leads)} verified founders and agencies!")
