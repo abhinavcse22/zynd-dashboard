@@ -1,45 +1,79 @@
-# --- Core UI & Data App Framework ---
+# ==========================================================
+# Zynd OS - Python Dependencies
+# ==========================================================
+
+# ----------------------------------------------------------
+# Core UI & Data Processing
+# ----------------------------------------------------------
 streamlit
 pandas
-python-dateutil
-markdown
 plotly
+markdown
+python-dateutil
 
-# --- API Clients & Networking ---
-requests>=2.31.0
-google-api-python-client
-gspread
-oauth2client
+# ----------------------------------------------------------
+# Environment & Configuration
+# ----------------------------------------------------------
 python-dotenv>=1.0.0
+
+# ----------------------------------------------------------
+# HTTP & Networking
+# ----------------------------------------------------------
+requests==2.31.0
+httpx>=0.25.0
+httpcore>=1.0.0
+
+# ----------------------------------------------------------
+# Backend API Server
+# ----------------------------------------------------------
+Flask==3.0.0
+gunicorn==21.2.0
+
+# ----------------------------------------------------------
+# Google APIs & Sheets
+# ----------------------------------------------------------
+google-api-python-client
+gspread==5.12.0
+oauth2client==4.1.3
+
+# ----------------------------------------------------------
+# Database
+# ----------------------------------------------------------
 supabase>=2.3.0
 
-# --- Web Scraping & Aggregation ---
-beautifulsoup4
+# ----------------------------------------------------------
+# Web Scraping & Search
+# ----------------------------------------------------------
+beautifulsoup4==4.12.2
 feedparser
 ddgs
 googlesearch-python
 
-# --- AI & LLM Orchestration ---
+# ----------------------------------------------------------
+# AI & LLM Providers
+# ----------------------------------------------------------
 google-generativeai
 anthropic>=0.40.0
 groq
 
-# --- Local Automation (Mac Worker Fallback) ---
+# ----------------------------------------------------------
+# Browser Automation
+# ----------------------------------------------------------
 selenium==4.18.1
 selenium-stealth
 webdriver-manager==4.0.1
 
-# --- Distribution & Logging Infrastructure ---
+# ----------------------------------------------------------
+# GitHub Integration
+# ----------------------------------------------------------
 PyGithub
+
+# ----------------------------------------------------------
+# Telegram Integration
+# ----------------------------------------------------------
 telethon
 
-# --- Cloud Outbound Social Engines (Fixed & Cleaned) ---
+# ----------------------------------------------------------
+# X (Twitter) Automation
+# ----------------------------------------------------------
 git+https://github.com/d60/twikit.git@main
-
-# --- Core Networking (Pinned to prevent build timeouts) ---
-httpcore>=1.0.0
-httpx>=0.25.0
-
-
-Flask==3.0.0
-gunicorn==21.2.0
