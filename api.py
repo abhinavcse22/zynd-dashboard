@@ -1,32 +1,38 @@
 import os
 from flask import Flask, request, jsonify
+import streamlit as st
 
-# Import your existing engine
+# 1. Mirror the environment variables into streamlit's secrets system for compatibility
+import json
+gcp_json = os.environ.get("GCP_SERVICE_ACCOUNT")
+if gcp_json:
+    st.secrets["gcp_service_account"] = json.loads(gcp_json)
+
+openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+if openrouter_key:
+    st.secrets["openrouter"] = {"api_key": openrouter_key}
+
+# 2. Import your engine AFTER secrets are initialized
 import zynd_competitor_radar
 
 app = Flask(__name__)
-
-# Basic security to ensure only Hermes can trigger the engine
 API_KEY = os.environ.get("ZYND_API_KEY", "default-dev-key")
 
 @app.route('/scan-competitor', methods=['POST'])
 def scan_competitor_endpoint():
-    # Verify Hermes authentication
     auth_header = request.headers.get("Authorization")
     if not auth_header or auth_header != f"Bearer {API_KEY}":
-        return jsonify({"error": "Unauthorized access"}), 401
+        return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
     target_url = data.get('target')
     competitor_name = data.get('name', 'Unknown Competitor')
 
     if not target_url:
-        return jsonify({"error": "Missing 'target' parameter"}), 400
+        return jsonify({"error": "Missing 'target'"}), 400
 
     try:
-        # Trigger your exact Streamlit function in the background
         result = zynd_competitor_radar.execute_competitor_radar_sweep(competitor_name, target_url)
-        
         return jsonify(result), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
