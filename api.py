@@ -1,18 +1,31 @@
 import os
-from flask import Flask, request, jsonify
-import streamlit as st
-
-# 1. Mirror the environment variables into streamlit's secrets system for compatibility
 import json
+import sys
+
+# 1. MOCK STREAMLIT SECRETS: Create a dictionary wrapper to bypass file checks completely
+class MockSecrets(dict):
+    def __getattr__(self, key):
+        return self[key]
+
+import streamlit as st
+secrets_dict = MockSecrets()
+
+# 2. Extract keys from Render Environment Variables and inject them into the mock
 gcp_json = os.environ.get("GCP_SERVICE_ACCOUNT")
 if gcp_json:
-    st.secrets["gcp_service_account"] = json.loads(gcp_json)
+    try:
+        secrets_dict["gcp_service_account"] = json.loads(gcp_json)
+    except Exception:
+        secrets_dict["gcp_service_account"] = gcp_json
 
 openrouter_key = os.environ.get("OPENROUTER_API_KEY")
-if openrouter_key:
-    st.secrets["openrouter"] = {"api_key": openrouter_key}
+secrets_dict["openrouter"] = {"api_key": openrouter_key or ""}
 
-# 2. Import your engine AFTER secrets are initialized
+# 3. Force Streamlit to use our custom memory-based dictionary
+st.secrets = secrets_dict
+
+# 4. Now safely import the rest of your app components
+from flask import Flask, request, jsonify
 import zynd_competitor_radar
 
 app = Flask(__name__)
